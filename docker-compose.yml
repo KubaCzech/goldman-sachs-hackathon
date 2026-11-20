@@ -1,0 +1,152 @@
+# One command: docker compose up --build
+# UI http://localhost:3000   API http://localhost:8080   Mock mailbox http://localhost:8025
+
+x-kafka: &kafka
+  image: apache/kafka:3.9.0
+  healthcheck:
+    test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+    interval: 5s
+    timeout: 10s
+    retries: 30
+    start_period: 15s
+
+x-kafka-env: &kafka-env
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+  CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+x-platform: &platform
+  image: alerting-platform:latest
+  build: ./platform
+  restart: unless-stopped
+
+x-platform-env: &platform-env
+  KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+  REPLICATION: 3
+  DB_URL: jdbc:postgresql://postgres:5432/alerting
+  DB_USER: alerting
+  DB_PASSWORD: alerting
+  PUBLIC_URL: http://localhost:3000
+
+services:
+  kafka1:
+    <<: *kafka
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,HOST://localhost:29092
+    ports: ["29092:29092"]
+  kafka2:
+    <<: *kafka
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:39092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092,HOST://localhost:39092
+    ports: ["39092:39092"]
+  kafka3:
+    <<: *kafka
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:49092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9092,HOST://localhost:49092
+    ports: ["49092:49092"]
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: alerting
+      POSTGRES_USER: alerting
+      POSTGRES_PASSWORD: alerting
+    # Not published to the host: only the services need it. Inspect with: docker compose exec postgres psql -U alerting
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alerting -d alerting"]
+      interval: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025", "1025:1025"]
+
+  api:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: api
+      JWT_SECRET: demo-only-secret-change-me
+    ports: ["8080:8080"]
+    depends_on:
+      kafka1: {condition: service_healthy}
+      kafka2: {condition: service_healthy}
+      kafka3: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  processor:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: processor
+      STREAM_THREADS: 3
+      COMMIT_INTERVAL_MS: 100
+    deploy:
+      replicas: 2
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  dispatcher:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: dispatcher
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8082/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  ui:
+    build: ./ui
+    ports: ["3000:80"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  bench:
+    <<: *platform
+    restart: "no"
+    profiles: ["bench"]
+    environment:
+      <<: *platform-env
+      ROLE: bench
+      BENCH_EVENTS: ${BENCH_EVENTS:-200000}
+      BENCH_RATE: ${BENCH_RATE:-20000}
+      BENCH_KEYS: ${BENCH_KEYS:-200}
+      BENCH_OUT: /results
+    volumes:
+      - ./bench/results:/results
