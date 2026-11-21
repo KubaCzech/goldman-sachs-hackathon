@@ -70,6 +70,12 @@ final class Seed {
         source("metrics-webhook", "payments", "Metrics webhook", "webhook", "alertmanager");
         source("trade-gateway", "rates", "Trade gateway events", "kafka", "trade-rejected");
         source("pricing-logs", "pricing", "Pricing engine logs", "webhook", "pricing-log");
+        // An HTTP polling source: the service fetches the status page every 10 s (no webhook needed).
+        ObjectNode status = Json.obj().put("id", "pricing-status").put("teamId", "pricing").put("name", "Pricing engine status page")
+                .put("type", "poll").putNull("defaultSchemaId").put("token", "demo-pricing-status").put("format", "auto");
+        status.putArray("grantedTeamIds");
+        status.putObject("poll").put("url", "http://api:8080/mock/status/pricing-engine").put("intervalSeconds", 10).put("onlyWhenChanged", true);
+        Store.save("source", status);
 
         runbook("settlement-timeout", "settlements", RB_YAML);
         runbook("higherrorrate-payments", "payments", RB_MD);
@@ -84,6 +90,17 @@ final class Seed {
         r.putArray("channels").add("phone").add("sms");
         present(r, "{{workflowName}} failed at {{step}}", "{{error.code}}: {{error.message}} (workflow {{workflowId}})", "#d32f2f", "step", "error.message");
         r.put("runbookId", "settlement-timeout");
+        Store.save("rule", r);
+
+        r = rule("pricing-status-down", "pricing", "Pricing engine status page not UP",
+                "status != 'UP' OR type = 'POLL_FAILED'", "pricing-status");
+        r.set("resolveWhen", SqlParser.parse("status = 'UP' OR type = 'POLL_RECOVERED'"));
+        r.put("resolveWhenSql", Filter.print(r.get("resolveWhen")));
+        r.putArray("groupBy").add("source");   // one alert per watched page, whether it says DOWN or stops answering
+        r.putArray("targets").addObject().put("type", "team").put("id", "pricing");
+        r.putArray("channels").add("ui");
+        r.put("severity", "critical");
+        present(r, "Pricing engine status page is not UP", "Found by polling the status page every 10 s.", null, "status", "httpStatus", "message");
         Store.save("rule", r);
 
         r = rule("pricing-warnings", "pricing", "Pricing engine warnings per instrument", "service LIKE 'pricing-engine-%' AND severity >= 'warning'", "pricing-logs");

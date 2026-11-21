@@ -214,6 +214,27 @@ check("text fields offer the values actually seen", "rates" in (byp.get("payload
 s, fl = call("GET", "/api/fields?sourceIds=trade-gateway", sara)
 check("no fields or values from a source the team may not read", s == 200 and all(f["origin"] == "built-in" for f in fl), str([f["path"] for f in fl if f["origin"] != "built-in"]))
 
+# ---------------------------------------------------------------- HTTP polling source (we fetch a URL instead of waiting for a webhook)
+page = f"smoke-{RUN}"
+call("POST", f"/mock/status/{page}", body={"status": "UP"})
+s, _ = call("POST", "/api/sources", petra, {"name": "bad poll " + RUN, "teamId": "pricing", "type": "poll", "poll": {"url": "http://example.com/status"}})
+check("a polling source may only fetch allowlisted hosts", s == 403)
+s, ps = call("POST", "/api/sources", petra, {"name": "status " + RUN, "teamId": "pricing", "type": "poll",
+                                             "poll": {"url": f"http://localhost:8080/mock/status/{page}", "intervalSeconds": 5, "onlyWhenChanged": True}})
+check("team admin creates a polling source", s == 201 and ps["poll"]["intervalSeconds"] == 5, str(ps))
+s, pr2 = call("POST", "/api/rules", petra, {"teamId": "pricing", "name": "status " + RUN, "filterSql": "status != 'UP' OR type = 'POLL_FAILED'",
+                                           "sourceIds": [ps["id"]], "groupBy": ["source"], "targets": [{"type": "team", "id": "pricing"}], "channels": ["ui"]})
+call("POST", f"/mock/status/{page}", body={"status": "DOWN"})
+down = wait_for(lambda: [a for a in alerts(petra, f"source = '{ps['id']}'")], 40)
+check("a watched page saying DOWN raises an alert, with no webhook", bool(down) and down[0]["lastEvent"].get("status") == "DOWN", str(down)[:200])
+call("POST", f"/mock/status/{page}", body={"status": "UP", "httpStatus": 503})
+failed = wait_for(lambda: [a for a in alerts(petra, f"source = '{ps['id']}'") if a["lastEvent"].get("type") == "POLL_FAILED"], 40)
+check("a URL that stops answering sends POLL_FAILED into the same alert", bool(failed) and failed[0]["count"] >= 2, str(failed)[:200])
+src_view = [x for x in call("GET", "/api/sources", petra)[1] if x["id"] == ps["id"]]
+check("the source shows how the last fetch went", bool(src_view) and src_view[0]["pollStatus"] and src_view[0]["pollStatus"]["ok"] is False, str(src_view)[:300])
+call("DELETE", "/api/rules/" + pr2["id"], petra)
+call("DELETE", "/api/sources/" + ps["id"], petra)
+
 # ---------------------------------------------------------------- private rules (a member's own rule)
 mine_rule = {"teamId": "settlements", "private": True, "name": "sara private " + RUN, "filterSql": f"workflowName = 'priv-{RUN}'",
              "sourceIds": ["settlement-bus"], "groupBy": ["workflowName"], "targets": [{"type": "team", "id": "settlements"}]}

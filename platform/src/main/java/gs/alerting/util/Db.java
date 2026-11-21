@@ -106,6 +106,8 @@ public final class Db {
             alert_id text, detail jsonb);
         CREATE INDEX IF NOT EXISTS audit_alert ON audit_log (alert_id);
         CREATE TABLE IF NOT EXISTS channel_status (channel text PRIMARY KEY, down boolean NOT NULL DEFAULT false);
+        CREATE TABLE IF NOT EXISTS poll_status (source_id text PRIMARY KEY, last_poll_at bigint, http_status int, ok boolean, error text,
+            took_ms bigint, events_sent bigint NOT NULL DEFAULT 0, last_sent_at bigint);
         CREATE TABLE IF NOT EXISTS action_types (type text PRIMARY KEY, doc jsonb NOT NULL);
         CREATE TABLE IF NOT EXISTS host_allowlist (host text NOT NULL, team_id text);
         CREATE TABLE IF NOT EXISTS saved_filters (id text PRIMARY KEY, owner_user_id text, team_id text, scope text, name text, sql text);

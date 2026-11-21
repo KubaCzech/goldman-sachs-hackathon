@@ -117,6 +117,24 @@ services:
       retries: 40
       start_period: 20s
 
+  poller:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: poller
+      # A URL typed as seen from a laptop (http://localhost:8080/...) reaches the API inside the compose network.
+      POLL_HOST_MAP: localhost=api
+      # Several pollers split the polling sources between them: POLLER_SHARDS=N and POLLER_INDEX=0..N-1.
+      POLLER_SHARDS: 1
+      POLLER_INDEX: 0
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8083/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
   dispatcher:
     <<: *platform
     environment:

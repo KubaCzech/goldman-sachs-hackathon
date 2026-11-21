@@ -156,7 +156,9 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflo
 .who { text-align: right; line-height: 1.2; }
 .who-name { font-weight: 600; }
 .who-role { font-size: 12px; color: var(--topbar-muted); }
-.switch-user select { background: var(--topbar-control-bg); color: var(--topbar-text); border-color: var(--topbar-control-border); min-width: 140px; }
+/* background-color, not the background shorthand: the shorthand resets background-repeat and the arrow image tiled over the text */
+.switch-user select { background-color: var(--topbar-control-bg); color: var(--topbar-text); border-color: var(--topbar-control-border); min-width: 140px; background-repeat: no-repeat; }
+.switch-user select option { color: var(--text); background-color: var(--surface); }
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 36px; height: 36px; padding: 0; flex: none;
@@ -409,3 +411,5 @@ summary { cursor: pointer; color: var(--primary); font-weight: 500; }
 .match.yes { background: var(--success-bg); color: var(--success-text); }
 .match.no { background: var(--neutral-bg); color: var(--neutral-text); }
 .preview-alert { border: 1px solid var(--border); border-left: 7px solid var(--muted); border-radius: 6px; padding: 10px 12px; }
+.small-pre { margin: 0; padding: 6px 8px; font-size: 12px; background: var(--code-bg); border-radius: 6px; white-space: pre; overflow-x: auto; }
+.poll-info { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }

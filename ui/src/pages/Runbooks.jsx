@@ -4,7 +4,8 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { asArray, show } from '../util.js';
-import { Empty, ErrorBox, Field, Section, useConfirm } from '../components/ui.jsx';
+import { Empty, ErrorBox, Field, Help, Section, useConfirm } from '../components/ui.jsx';
+import ActionTypes from '../components/ActionTypes.jsx';
 import { useUnsavedChanges } from '../unsaved.jsx';
 
 const EXAMPLE = `runbook: settlement-timeout
@@ -199,7 +200,7 @@ export default function Runbooks() {
   return (
     <div>
       <div className="page-head">
-        <h1>Runbooks</h1>
+        <h1>Runbooks<Help text="A runbook says what to do when an alert fires. It is attached to an alert in this order: the runbook linked to the alert's rule; otherwise a runbook whose 'matches' section fits the event (the most specific wins); otherwise the team's runbooks are searched for similar words and offered as suggestions. Steps are text to follow or actions the service runs, filled in with values from the alert." /></h1>
         {editing === undefined && (adminTeams.length > 0 ? (
           <button type="button" className="btn primary" onClick={() => setEditing(null)}>New runbook</button>
         ) : (
@@ -243,6 +244,7 @@ export default function Runbooks() {
           </div>
         )
       )}
+      <ActionTypes />
       {confirmDialog}
     </div>
   );

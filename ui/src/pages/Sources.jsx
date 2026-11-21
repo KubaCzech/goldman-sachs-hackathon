@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { SAMPLES, sampleText } from '../samples.js';
-import { asArray, flattenPaths, show } from '../util.js';
+import { asArray, flattenPaths, fmtTime, show } from '../util.js';
 import { FORMATS, FORMAT_LABELS, describeParsed, parseSampleText } from '../sampleParse.js';
 import FilterEditor, { emptyFilter, resolveFilter } from '../components/FilterEditor.jsx';
 import { Combobox, CopyButton, Empty, ErrorBox, Field, Help, Section, useConfirm } from '../components/ui.jsx';
@@ -107,10 +107,12 @@ function SourceCard({ source, schemas, reload }) {
         )}
       </div>
 
+      {source.type === 'poll' && <PollInfo source={source} />}
+
       <table className="table kv compact">
         <tbody>
           <tr>
-            <th>Webhook URL</th>
+            <th>Webhook URL{source.type === 'poll' && <Help text="A polling source can also receive pushed events here, like any webhook source." />}</th>
             <td><code>{source.ingestUrl || `/ingest/${source.id}`}</code> <CopyButton text={`${window.location.origin}${source.ingestUrl || `/ingest/${source.id}`}`} /></td>
           </tr>
           <tr>
@@ -178,7 +180,31 @@ function SourceCard({ source, schemas, reload }) {
   );
 }
 
-const EMPTY_SOURCE = { name: '', teamId: '', type: 'webhook', defaultSchemaId: '', format: 'auto' };
+/** Polling sources: what is fetched, how often, and how the last fetch went. */
+function PollInfo({ source }) {
+  const p = source.poll || {};
+  const st = source.pollStatus;
+  return (
+    <div className="poll-info">
+      <div>
+        Fetches <code>{p.url}</code> every {p.intervalSeconds || 30} s
+        {p.onlyWhenChanged !== false ? ', and sends it on only when the response has changed' : ', and sends every response'}.
+        <Help text="When the URL stops answering (or answers with an error), one POLL_FAILED event is sent, and POLL_RECOVERED when it answers again. Rules can alert on type = 'POLL_FAILED'." />
+      </div>
+      {st ? (
+        <div className={st.ok ? 'muted' : 'error-text'}>
+          Last fetch {fmtTime(st.lastPollAt)}: {st.ok ? `OK (HTTP ${st.httpStatus}, ${st.tookMs} ms)` : `failed: ${st.error}`} · {st.eventsSent || 0} event(s) sent
+          {st.lastSentAt ? `, last at ${fmtTime(st.lastSentAt)}` : ''}
+        </div>
+      ) : (
+        <div className="muted">Not fetched yet; the first fetch happens within a few seconds.</div>
+      )}
+    </div>
+  );
+}
+
+const EMPTY_POLL = { url: '', intervalSeconds: 30, onlyWhenChanged: true };
+const EMPTY_SOURCE = { name: '', teamId: '', type: 'webhook', defaultSchemaId: '', format: 'auto', poll: EMPTY_POLL };
 
 function CreateSource({ schemas, onDone, onCancel }) {
   const { adminTeams } = useAuth();
@@ -191,7 +217,12 @@ function CreateSource({ schemas, onDone, onCancel }) {
     if (!form.name.trim()) { toast.error('Give the source a name.'); return false; }
     setBusy(true);
     try {
-      await api.post('/api/sources', { name: form.name.trim(), teamId, type: form.type, defaultSchemaId: form.defaultSchemaId || null, format: form.format });
+      const body = { name: form.name.trim(), teamId, type: form.type, defaultSchemaId: form.defaultSchemaId || null, format: form.format };
+      if (form.type === 'poll') {
+        if (!form.poll.url.trim()) { toast.error('Give the URL to fetch.'); return false; }
+        body.poll = { url: form.poll.url.trim(), intervalSeconds: Math.max(5, Number(form.poll.intervalSeconds) || 30), onlyWhenChanged: form.poll.onlyWhenChanged };
+      }
+      await api.post('/api/sources', body);
       toast.success('Source created');
       setForm(EMPTY_SOURCE);
       onDone();
@@ -220,10 +251,26 @@ function CreateSource({ schemas, onDone, onCancel }) {
       </Field>
       <Field label="How events arrive">
         <select value={form.type} onChange={(e) => set({ type: e.target.value })}>
-          <option value="webhook">Webhook (HTTP POST)</option>
-          <option value="kafka">Kafka topic</option>
+          <option value="webhook">Webhook (they send us HTTP POSTs)</option>
+          <option value="kafka">Kafka topic (they write to a topic)</option>
+          <option value="poll">HTTP polling (we fetch a URL on a schedule)</option>
         </select>
       </Field>
+      {form.type === 'poll' && (
+        <>
+          <Field label="URL to fetch" className="grow" hint="For example a status page or a health or metrics endpoint. Its host must be on the allowlist a platform admin keeps. The response can be in any format.">
+            <input type="text" value={form.poll.url} onChange={(e) => set({ poll: { ...form.poll, url: e.target.value } })} placeholder="http://localhost:8080/mock/status/my-service" />
+          </Field>
+          <Field label="Every (seconds)">
+            <input type="number" min={5} value={form.poll.intervalSeconds} onChange={(e) => set({ poll: { ...form.poll, intervalSeconds: e.target.value } })} style={{ width: 90 }} />
+          </Field>
+          <label className="check align-end">
+            <input type="checkbox" checked={form.poll.onlyWhenChanged} onChange={(e) => set({ poll: { ...form.poll, onlyWhenChanged: e.target.checked } })} />
+            Only when the response changes
+            <Help text="Off: every fetch becomes an event (useful when each response is a new reading). On: an unchanged status page sends nothing." />
+          </label>
+        </>
+      )}
       <Field label="Message format" hint="Leave on automatic unless every message has the same format. Detection handles JSON, JSON lines, CSV/TSV with a header row, YAML, XML, key=value pairs, syslog, form fields and plain text (one event per line).">
         <select value={form.format} onChange={(e) => set({ format: e.target.value })}>
           {FORMATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}

@@ -500,3 +500,12 @@ These supersede the sections above where they differ.
   approved, or marked done) are copied from their templates; rejected steps are kept with a comment; ack/resolve notes
   become text steps with distinctive event values replaced by `{{path}}` placeholders (longest value first). `matches`
   is the alert's type and service. The UI opens it in the runbook editor as an unsaved draft (team admins only).
+- **HTTP polling sources:** source `type: "poll"` with `poll: {url, intervalSeconds (>= 5), onlyWhenChanged
+  (default true)}`; the host must be on `host_allowlist` (checked on save and on every fetch). ROLE `poller` reads
+  poll sources from the `config` table every second, fetches due ones (virtual threads, 5 s timeout, no redirects)
+  and produces the body to `ingest.<id>` with `ingest-ts` and the response `content-type`. Unchanged bodies (SHA-1)
+  are skipped when `onlyWhenChanged`. The first failure sends `{"type":"POLL_FAILED","severity":"error",...}`, the
+  first success after failures `POLL_RECOVERED`. Status per source in table `poll_status`, shown as `pollStatus` on
+  `GET /api/sources`. `POLLER_SHARDS` / `POLLER_INDEX` split sources between poller instances; `POLL_HOST_MAP`
+  (default `localhost=api` in compose) rewrites hosts for the compose network. Seed: `pricing-status` polls
+  `/mock/status/pricing-engine` every 10 s, rule `pricing-status-down`.

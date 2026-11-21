@@ -5,7 +5,7 @@ import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { useAlertStream } from '../useAlertStream.js';
 import { alertColor, asArray, fmtTime, pick, show } from '../util.js';
-import { Empty, ErrorBox, Field, JsonBlock, Section, SeverityBadge, StatusBadge, TemplateText } from '../components/ui.jsx';
+import { Empty, ErrorBox, Field, Help, JsonBlock, Section, SeverityBadge, StatusBadge, TemplateText } from '../components/ui.jsx';
 
 const isPendingApproval = (status) => /pending|await|approval/i.test(String(status || ''));
 const isDone = (status) => /^(done|success|succeeded|completed|executed|ok)$/i.test(String(status || ''));
@@ -57,12 +57,24 @@ function RunbookPanel({ alert, data, error, reload }) {
         </Empty>
         {suggestions.length > 0 && (
           <table className="table">
-            <thead><tr><th>Suggested runbook</th><th>Match score</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <th>
+                  Suggested runbook
+                  <Help text="No runbook is linked to this alert's rule, and none of the team's runbooks has a 'matches' section that fits it. These suggestions come from a text search of the team's runbooks for words in this alert (its title, type, service, message and event fields)." />
+                </th>
+                <th>
+                  Match
+                  <Help text="How well the runbook's words match this alert, compared with the other suggestions; the best one is lower than 100% when even it shares only a few words. It is a hint, not a guarantee: read the steps before using it." />
+                </th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
               {suggestions.map((s) => (
                 <tr key={s.runbookId}>
                   <td>{s.name || s.runbookId}</td>
-                  <td>{typeof s.score === 'number' ? s.score.toFixed(2) : show(s.score) || '—'}</td>
+                  <td>{typeof s.score === 'number' ? `${Math.round(s.score * 100)}%` : show(s.score) || '—'}</td>
                   <td className="right">
                     <button
                       type="button"
@@ -73,6 +85,7 @@ function RunbookPanel({ alert, data, error, reload }) {
                     >
                       Use this runbook
                     </button>
+                    <Help text="Links the runbook to this alert's rule. From then on every alert of the rule shows it directly, without searching." />
                   </td>
                 </tr>
               ))}
@@ -352,7 +365,7 @@ export default function AlertDetail() {
         </div>
 
         <div>
-          <Section title="Runbook" hint="What to do about this alert.">
+          <Section title="Runbook" hint="What to do about this alert. Steps are filled in with values from this alert. A step can be text to follow or an action the service runs for you (a health check, a retry, a restart, an escalation); risky actions wait for a team admin to approve. Everything done here is recorded in the history below.">
             <RunbookPanel alert={alert} data={runbook} error={runbookError} reload={() => { loadRunbook(); refreshSideSoon(); }} />
           </Section>
 

@@ -258,7 +258,26 @@ public final class ApiMain {
         if (!own) o.remove("token");                         // a grant lets a team read events, not write them
         if (!o.has("grantedTeamIds")) o.putArray("grantedTeamIds");
         if (!o.has("format")) o.put("format", "auto");
+        if ("poll".equals(Json.text(s, "type"))) {
+            ObjectNode st = Db.one("SELECT last_poll_at AS \"lastPollAt\", http_status AS \"httpStatus\", ok, error, took_ms AS \"tookMs\", "
+                    + "events_sent AS \"eventsSent\", last_sent_at AS \"lastSentAt\" FROM poll_status WHERE source_id = ?", id);
+            o.set("pollStatus", st);
+        }
         return o;
+    }
+
+    /** {url, intervalSeconds (>= 5), onlyWhenChanged}; the URL's host must be on the allowlist, like runbook actions. */
+    private static ObjectNode pollConfig(JsonNode p, String teamId) {
+        String url = Json.text(p, "url", "").trim();
+        java.net.URI u;
+        try { u = java.net.URI.create(url); } catch (Exception e) { throw new IllegalArgumentException("The URL to poll is not valid"); }
+        if (u.getHost() == null || !(url.startsWith("http://") || url.startsWith("https://"))) throw new IllegalArgumentException("Give an http:// or https:// URL to poll");
+        boolean allowed = Db.query("SELECT host FROM host_allowlist WHERE team_id IS NULL OR team_id = ?", teamId).stream()
+                .anyMatch(r -> u.getHost().equalsIgnoreCase(Json.text(r, "host")));
+        if (!allowed) throw new ApiError(403, "Host '" + u.getHost() + "' is not on the allowlist. A platform admin must add it first.");
+        int every = p.path("intervalSeconds").asInt(30);
+        if (every < 5) throw new IllegalArgumentException("Poll at most every 5 seconds");
+        return Json.obj().put("url", url).put("intervalSeconds", every).put("onlyWhenChanged", p.path("onlyWhenChanged").asBoolean(true));
     }
 
     private static String format(ObjectNode b) {
@@ -292,11 +311,12 @@ public final class ApiMain {
             String team = need(b, "teamId"), name = need(b, "name");
             c.requireTeamAdmin(team);
             String type = Json.text(b, "type", "webhook");
-            if (!type.equals("webhook") && !type.equals("kafka")) throw new IllegalArgumentException("type must be 'webhook' or 'kafka'");
+            if (!List.of("webhook", "kafka", "poll").contains(type)) throw new IllegalArgumentException("type must be 'webhook', 'kafka' or 'poll'");
             ObjectNode s = Json.obj();
             String id = Store.uniqueId("source", name);
             s.put("id", id).put("teamId", team).put("name", name).put("type", type).put("defaultSchemaId", Json.text(b, "defaultSchemaId"));
             s.put("format", format(b));
+            if (type.equals("poll")) s.set("poll", pollConfig(b.path("poll"), team));
             byte[] rnd = new byte[18];
             new SecureRandom().nextBytes(rnd);
             s.put("token", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(rnd));
@@ -313,6 +333,7 @@ public final class ApiMain {
             c.requireTeamAdmin(Json.text(s, "teamId"));
             for (String k : List.of("name", "defaultSchemaId")) if (b.has(k)) s.set(k, b.get(k));
             if (b.has("format")) s.put("format", format(b));
+            if ("poll".equals(Json.text(s, "type")) && b.has("poll")) s.set("poll", pollConfig(b.get("poll"), Json.text(s, "teamId")));
             Store.save("source", s);
             json(ctx, sourceView(s, c));
         });
@@ -619,6 +640,22 @@ public final class ApiMain {
             if (ctx.path().contains("/fail")) json(ctx.status(500), Json.obj().put("ok", false).put("path", ctx.path()));
             else json(ctx, Json.obj().put("ok", true).put("path", ctx.path()).put("status", "UP"));
         };
+        // A status page to watch with an HTTP polling source. GET returns the state; POST {"status": "DOWN"} or
+        // {"httpStatus": 503} changes it, so a demo can make a watched service fail and recover.
+        Map<String, ObjectNode> statusPages = new java.util.concurrent.ConcurrentHashMap<>();
+        app.get("/mock/status/{name}", ctx -> {
+            ObjectNode st = statusPages.computeIfAbsent(ctx.pathParam("name"), n -> Json.obj().put("service", n).put("status", "UP").put("httpStatus", 200));
+            int code = st.path("httpStatus").asInt(200);
+            ObjectNode out = st.deepCopy();
+            out.remove("httpStatus");
+            json(ctx.status(code), out);
+        });
+        app.post("/mock/status/{name}", ctx -> {
+            ObjectNode st = statusPages.computeIfAbsent(ctx.pathParam("name"), n -> Json.obj().put("service", n).put("status", "UP").put("httpStatus", 200));
+            ObjectNode b = body(ctx);
+            b.fields().forEachRemaining(en -> st.set(en.getKey(), en.getValue()));
+            json(ctx, st);
+        });
         app.get("/mock/target/*", mock);
         app.post("/mock/target/*", mock);
         app.get("/health", mock);

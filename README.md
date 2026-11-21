@@ -31,6 +31,14 @@ curl -X POST http://localhost:8080/ingest/metrics-webhook -H 'X-Source-Token: de
 
 Log in as **anna** to see it. Log in as **ravi** (another team) to see that the Rates team cannot.
 
+Watch something instead of waiting for it to call you: the seeded `pricing-status` source fetches a status page
+every 10 s. Make it fail and recover (log in as **petra**):
+
+```bash
+curl -X POST http://localhost:8080/mock/status/pricing-engine -H 'Content-Type: application/json' -d '{"status":"DOWN"}'
+curl -X POST http://localhost:8080/mock/status/pricing-engine -H 'Content-Type: application/json' -d '{"status":"UP"}'
+```
+
 Events do not have to be JSON: the same endpoint takes CSV, YAML, XML, `key=value` lines, syslog or plain text.
 
 ```bash
@@ -42,11 +50,11 @@ curl -X POST http://localhost:8080/ingest/pricing-logs -H 'X-Source-Token: demo-
 
 | Area | What is built and measured | Evidence |
 |---|---|---|
-| **Flexibility** | New source, schema, rule, runbook and action type are configuration, made in the UI or API, live within seconds, no restart. Any input format (JSON, JSON lines, CSV/TSV, YAML, XML, key=value, syslog, form fields, plain text) and any schema, including ones never registered. Rules: a SQL `WHERE` subset (`AND`/`OR`/`NOT`, `IN`, `BETWEEN`, `LIKE`, `IS NULL`, nested paths, numeric and severity comparisons), "N events within M seconds", automatic resolve condition, re-notify interval, severity override, title/body templates, grouping. The same condition language searches alert history. A new delivery channel provider is one class. | UI → Sources, Rules; [Adding things](#adding-things); `core/Formats.java` |
+| **Flexibility** | Three kinds of source: webhook (pushed to us), Kafka topic, and HTTP polling (the service fetches a URL on a schedule, sends only changes, and turns "the URL stopped answering" into a `POLL_FAILED` event). New source, schema, rule, runbook and action type are configuration, made in the UI or API, live within seconds, no restart. Any input format (JSON, JSON lines, CSV/TSV, YAML, XML, key=value, syslog, form fields, plain text) and any schema, including ones never registered. Rules: a SQL `WHERE` subset (`AND`/`OR`/`NOT`, `IN`, `BETWEEN`, `LIKE`, `IS NULL`, nested paths, numeric and severity comparisons), "N events within M seconds", automatic resolve condition, re-notify interval, severity override, title/body templates, grouping. The same condition language searches alert history. A new delivery channel provider is one class. | UI → Sources, Rules; [Adding things](#adding-things); `core/Formats.java` |
 | **Scalability** | One fixed exactly-once topology, scaled by partitions: add processor instances or threads, no code change. Rules: compacted Kafka topic held by every instance. Dedup and window state: per alert key in a local store backed by a Kafka changelog, so an instance can die and another takes over. Delivery status: Postgres with an idempotency key. Measured: processors 1 → 6 cores gives 2.9×; a broker's second core doubles throughput. Known limits: one very hot alert key is handled by one thread (a rule-design choice); Postgres is a single instance (configuration and read model; not on the event path). | [Benchmark](#benchmark), [How it works](#how-it-works), `scripts/bench_scaling.py` |
 | **UX** | One command to start. A new team gets its first alert about 7 s after creating a source and a rule (measured: 3 API calls, or a few clicks). Rule builder: pick sources, then only their fields (from their schema and their recent events, with the values seen), typed operators, "match all / any", live preview against a sample in any format; SQL mode with live checking for complex rules. Help behind "?" icons, unsaved-changes guard, dark mode. Alerts show a rendered title, chosen fields, a filled-in runbook with runnable steps, and every delivery attempt. | UI at http://localhost:3000; [Start](#start) |
 | **Throughput / latency** | At 1,500 events/s: ingest → alert p50 222 ms / p99 ≈ 370 ms, ingest → email delivered p50 411–665 ms / p99 610–860 ms. Capacity on one laptop: 36,000–56,000 events/s (default), up to 121,000 events/s (one broker on 4 cores). No lost events in any run, checked against Postgres. | [Benchmark](#benchmark), `bench/results/` |
-| **Implementation** | Working end to end; 35 unit/topology tests and 84 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
+| **Implementation** | Working end to end; 37 unit/topology tests and 89 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
 | **What is new here** | Rules hot-swapped as data in an exactly-once stream; one condition language compiled three ways (stream predicate, visual builder, parameterised SQL over history); format- and schema-agnostic ingest; runbooks that fill themselves from the alert, run actions behind approvals, learn a link when someone confirms a suggestion, and are written back from a handled incident ("Save what was done as a runbook" turns the audit trail and notes into a reviewed draft, with that incident's values turned back into placeholders); a benchmark suite that found and fixed a real event-loss race. | [How it works](#how-it-works) |
 
 ## Seeded demo data
@@ -67,8 +75,8 @@ The four example rules and three runbooks from the brief's appendices are loaded
 ## Tests
 
 ```bash
-cd platform && mvn test          # 35 unit and topology tests (no Docker needed)
-python3 scripts/smoke.py         # 84 end-to-end checks against the running stack
+cd platform && mvn test          # 37 unit and topology tests (no Docker needed)
+python3 scripts/smoke.py         # 89 end-to-end checks against the running stack
 ```
 
 The smoke test covers: ingest and token check, de-duplication into one alert with a counter, one notification for
@@ -152,7 +160,7 @@ alert's counter and notification decision are not repeated after a crash.
 
 ```
 sources ─► ingest.<source> topics ─► [normalise + match rules] ─► alerting.matches ─► [alert state + fan-out]
- webhook gateway / Kafka producers        stateless                 keyed by alert        one writer per alert
+ webhook, Kafka producers, poller (URLs) stateless                 keyed by alert        one writer per alert
                                                                                               │           │
                               cfg (compacted) ── rules, schemas, teams, users ──► both        ▼           ▼
                                                                                            alerts    notifications
@@ -175,15 +183,72 @@ sources ─► ingest.<source> topics ─► [normalise + match rules] ─► al
 - **Delivery.** Exactly-once inside Kafka. Dispatchers use an idempotency key, retry with backoff through a retry
   topic, and end in a dead-letter topic after five attempts.
 - **Scaling.** Every role is the same image with a different `ROLE` and scales independently: processors up to the
-  partition count (6), API and dispatcher freely.
+  partition count (6), API and dispatcher freely, pollers by splitting the polling sources (`POLLER_SHARDS`,
+  `POLLER_INDEX`).
+- **Polling sources.** The `poller` role fetches each polling source's URL on its schedule and writes the response
+  into the source's ingest topic, so from there it is parsed and matched like any pushed event. An unchanged response
+  is skipped by default. The first failed fetch sends a `POLL_FAILED` event, the first success after that a
+  `POLL_RECOVERED` one. The URL's host must be on the allowlist, as for runbook actions.
 
 Full detail: [`docs/SPEC.md`](docs/SPEC.md). Phases and test gates: [`docs/PLAN.md`](docs/PLAN.md).
+
+## Runbooks: steps, actions and approvals
+
+A runbook says what to do when an alert fires. Write it in the UI (Runbooks → New runbook) or `POST /api/runbooks`,
+in any form: YAML gives runnable steps, Markdown lists become steps, any other text is kept as it is. Example (the
+brief's Appendix B, loaded by default):
+
+```yaml
+runbook: settlement-timeout
+matches:                       # which events it is for, when no rule links it
+  type: WORKFLOW_FAILED
+  error.code: TIMEOUT
+steps:
+  - check: "Is counterparty-service healthy?"
+    action: http_get           # built-in action
+    url: "http://counterparty-service/health"
+  - action: retry_workflow     # an action type defined as configuration
+    workflowId: "{{workflowId}}"
+    approval: none
+  - if: "retry fails twice"
+    action: escalate
+    team: counterparty-support
+    approval: required         # waits for a team admin
+```
+
+**Which runbook an alert shows.** In order: the runbook linked to the alert's rule; otherwise the team's runbook whose
+`matches` all hold for the event, the most specific (most keys) winning; otherwise the team's runbooks are searched
+for words in the alert and shown as suggestions with a match score. "Use this runbook" links the chosen one to the
+rule, so the next alert of that rule shows it directly.
+
+**Steps.** Placeholders such as `{{workflowId}}` or `{{labels.service}}` are filled from the alert's event; one that
+cannot be filled is marked in the UI, and an action whose URL is missing a value is refused. The full steps appear on
+the alert page and in emails; SMS and phone get a link.
+
+**Actions.** A step with `action:` is run by the service when someone clicks Run on the alert. `http_get` and
+`http_post` are built in. Any other action is configuration: a method, a URL template and a body template, added by a
+platform admin on the Runbooks page or with
+
+```bash
+curl -X POST http://localhost:8080/api/action-types -H "Authorization: Bearer <admin token>" -H 'Content-Type: application/json' \
+  -d '{"type":"page_oncall","method":"POST","urlTemplate":"http://pager/teams/{{team}}/page","bodyTemplate":"{\"alert\":\"{{type}}\"}"}'
+```
+
+A step's own settings fill the template first, then the alert's event. The target host must be on the allowlist
+(table `host_allowlist`, global or per team), so a runbook cannot call arbitrary addresses.
+
+**Approvals.** `approval: required` makes a step wait when a team member runs it; a team admin of the alert's team
+approves (the action then runs) or rejects it. Every run, approval, rejection and result is in the alert's history.
+
+**From incident to runbook.** On a resolved alert, "Save what was done as a runbook" writes a draft from the history:
+the steps that were run (with their placeholders), and the notes left when acknowledging or resolving, with this
+alert's values turned back into placeholders. It opens in the runbook editor to be checked and saved.
 
 ## Adding things
 
 | To add | Do this | Code? |
 |---|---|---|
-| Source | UI → Sources → Add (gets a topic, URL and token; pick a message format or leave it on automatic) | No |
+| Source | UI → Sources → Add: a webhook, a Kafka topic, or a URL the service fetches on a schedule (gets a topic, URL and token; pick a message format or leave it on automatic) | No |
 | Input format | parser in `core/Formats.java` (detection + one method) | One method |
 | Schema | UI → paste a sample, pick severity/time/type fields | No |
 | Rule | UI → Rules, or `POST /api/rules` | No |
@@ -205,6 +270,8 @@ on-call person is notified) stay in the service, under Admin. Not built: the SSO
 
 - **Login** is a user picker that issues a real signed JWT; there is no password or identity provider. Roles and
   access checks are enforced for real on the server.
+- **Watched status page**: `/mock/status/<name>` in the API stands in for a real service's status page (GET to read,
+  POST to change it).
 - **Email** goes to Mailpit (a local mock SMTP server). **SMS and phone** are a log line plus a delivery record.
 - **Action targets** (retry workflow, restart service, escalate, open ticket) call a mock endpoint inside the API.
   The sample runbook's `http://counterparty-service/health` is mapped to that mock.

@@ -8,8 +8,9 @@ public final class Main {
             case "api" -> gs.alerting.api.ApiMain.run();
             case "processor" -> gs.alerting.stream.ProcessorMain.run();
             case "dispatcher" -> gs.alerting.dispatch.DispatcherMain.run();
+            case "poller" -> gs.alerting.poll.PollerMain.run();
             case "bench" -> gs.alerting.bench.BenchMain.run();
-            default -> throw new IllegalArgumentException("Unknown ROLE '" + role + "' (api|processor|dispatcher|bench)");
+            default -> throw new IllegalArgumentException("Unknown ROLE '" + role + "' (api|processor|dispatcher|poller|bench)");
         }
     }
 }
