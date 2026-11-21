@@ -63,6 +63,8 @@ final class Assistant {
         };
     }
 
+    private static final Set<String> FIXED_VALUES = Set.of("severity", "status");
+
     static final String SYSTEM = """
             You translate a person's description into a filter for an alerting service.
 
@@ -97,8 +99,9 @@ final class Assistant {
             String path = Json.text(f, "path");
             if (path == null || !known.add(path) || known.size() > 200) continue;
             user.append("- ").append(path).append(": ").append(Json.text(f, "type", "string"));
-            // Values are listed only for the service's own fixed fields; values seen in events are never sent.
-            if ("built-in".equals(Json.text(f, "origin")) && f.path("values").isArray() && !path.equals("source"))
+            // Values are listed only for the service's own fixed lists (severity, status). Every other field's values,
+            // including type and service, come from events and are never sent.
+            if (FIXED_VALUES.contains(path) && f.path("values").isArray())
                 user.append(" (one of ").append(Json.strings(f.get("values"))).append(")");
             user.append('\n');
         }

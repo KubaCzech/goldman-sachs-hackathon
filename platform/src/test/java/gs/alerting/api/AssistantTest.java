@@ -30,6 +30,8 @@ class AssistantTest {
         a.addObject().put("path", "severity").put("type", "severity").put("origin", "built-in").put("scope", "event")
                 .putArray("values").add("critical").add("error");
         a.addObject().put("path", "status").put("type", "string").put("origin", "built-in").put("scope", "alert");
+        a.addObject().put("path", "type").put("type", "string").put("origin", "built-in").put("scope", "event")
+                .putArray("values").add("SECRET-TYPE-FROM-EVENTS");
         a.addObject().put("path", "payload.notional").put("type", "number").put("origin", "schema").put("scope", "event");
         a.addObject().put("path", "payload.desk").put("type", "string").put("origin", "observed").put("scope", "event")
                 .putArray("values").add("SECRET-DESK-VALUE");
@@ -45,6 +47,7 @@ class AssistantTest {
         assertEquals("severity >= 'error' AND (payload.notional > 10000000 OR payload.desk = 'rates')", r.get("sql").asText());
         assertEquals(0, r.get("unknownFields").size());
         assertFalse(prompts.get(0).contains("SECRET-DESK-VALUE"), "values seen in events are never sent to the model");
+        assertFalse(prompts.get(0).contains("SECRET-TYPE-FROM-EVENTS"), "nor the type values, which also come from events");
         assertFalse(prompts.get(0).contains("- status"), "alert-only fields are not offered for rules");
         assertTrue(prompts.get(0).contains("critical"), "the service's own fixed values are listed");
     }
