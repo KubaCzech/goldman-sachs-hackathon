@@ -190,6 +190,8 @@ public final class ApiMain {
         app.get("/api/me/preferences", ctx -> {
             ObjectNode u = caller(ctx).user, o = Json.obj();
             o.put("email", Json.text(u, "email")).put("phone", Json.text(u, "phone"));
+            String theme = Json.text(u, "theme");
+            if (theme != null) o.put("theme", theme);
             o.set("channels", u.path("channels"));
             o.set("quietHours", u.path("quietHours"));
             json(ctx, o);
@@ -197,6 +199,11 @@ public final class ApiMain {
         app.put("/api/me/preferences", ctx -> {
             Caller c = caller(ctx);
             ObjectNode b = body(ctx), u = c.user;
+            if (b.has("theme")) {
+                String theme = Json.text(b, "theme");
+                if (!"light".equals(theme) && !"dark".equals(theme)) throw new IllegalArgumentException("theme must be 'light' or 'dark'");
+                u.put("theme", theme);
+            }
             for (String k : List.of("email", "phone", "channels", "quietHours")) if (b.has(k)) u.set(k, b.get(k));
             Store.save("user", u);
             Store.audit(c.userId, "PREFERENCES_UPDATED", "user", c.userId, null, null);

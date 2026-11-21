@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'reac
 import { useAuth } from './auth.jsx';
 import { api, getToken } from './api.js';
 import { toast } from './toast.js';
+import { useTheme } from './theme.jsx';
 import { asArray } from './util.js';
 import { Toasts } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
@@ -30,8 +31,22 @@ function roleSummary(me) {
   return parts.length ? parts.join(', ') : 'No team';
 }
 
+function ThemeIcon({ dark }) {
+  return dark ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
 function TopBar() {
   const { me, users, login } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [allUsers, setAllUsers] = useState(users);
 
@@ -68,6 +83,16 @@ function TopBar() {
           <div className="who-name">{me.displayName || me.username || me.id}</div>
           <div className="who-role">{roleSummary(me)}</div>
         </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-pressed={theme === 'dark'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          <ThemeIcon dark={theme === 'dark'} />
+        </button>
         <label className="switch-user">
           <span className="sr-only">Switch user</span>
           <select value="" onChange={(e) => switchTo(e.target.value)} aria-label="Switch user">
