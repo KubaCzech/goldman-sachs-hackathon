@@ -237,11 +237,17 @@ class TopologyTest {
     }
 
     @Test
-    void nonJsonGoesToTheDeadLetterTopicAndArraysAreSplit() {
+    void anyTextFormatBecomesEventsAndOnlyBinaryGoesToTheDeadLetterTopic() {
         putRule(Samples.rule("settle", "settlements", "type = 'WORKFLOW_FAILED'", "settlement-bus"));
-        settlement.pipeInput(null, "this is not json", now);
-        assertEquals(1, dlq.readValuesToList().size());
+        putRule(Samples.rule("words", "settlements", "message LIKE '%timed out%'", "settlement-bus"));
+        settlement.pipeInput(null, "2026-10-23 ERROR settlement timed out for WF-1", now);
+        assertEquals(1, matches.readValuesToList().size(), "plain text is an event with a message");
+        settlement.pipeInput(null, "type,workflowName\nWORKFLOW_FAILED,a\nWORKFLOW_FAILED,b\n", now);
+        assertEquals(2, matches.readValuesToList().size(), "each CSV row is an event");
         settlement.pipeInput(null, "[" + Samples.WORKFLOW + "," + Samples.WORKFLOW + "]", now);
-        assertEquals(2, matches.readValuesToList().size());
+        assertEquals(2, matches.readValuesToList().size(), "a JSON array is split");
+        assertTrue(dlq.readValuesToList().isEmpty());
+        settlement.pipeInput(null, "\u0000\u0001\u0002\u0003\u0004\u0005\u0006", now);
+        assertEquals(1, dlq.readValuesToList().size(), "binary goes to the dead-letter topic");
     }
 }

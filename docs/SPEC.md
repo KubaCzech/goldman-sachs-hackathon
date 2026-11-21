@@ -476,3 +476,12 @@ These supersede the sections above where they differ.
   `scripts/bench_scaling.py`); ingest → delivered latency is read from the `deliveries` table. Core limits use
   dedicated cores (`docker update --cpuset-cpus`); CPU quotas (`--cpus`) were tried and rejected because CFS
   throttling stalls exactly-once commits and distorts the result.
+- **Input formats:** `core/Formats.java` turns a body into events: JSON (object or array), NDJSON, CSV/TSV with a
+  header row, YAML (multi-document), XML (attributes and children become fields, a root of repeated children is a
+  batch; DOCTYPE/external entities refused), logfmt, syslog (RFC 5424 and 3164), form fields and plain text (one event
+  per line, level guessed from words such as ERROR). Values are typed (numbers, booleans), dotted keys become nested
+  fields. Source field `format` (default `auto`) is strict when set; a `Content-Type` is a hint that falls back to
+  detection (`application/x-www-form-urlencoded` is ignored because `curl -d` sends it for everything). Only non-text
+  bodies go to `ingest.dlq`. The webhook answers `{"accepted": <events>, "format": <detected>}`. `POST
+  /api/formats/parse {text, format?}` shows how a sample is read; schema inference and rule preview accept a sample
+  in any format.

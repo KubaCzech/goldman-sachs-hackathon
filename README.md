@@ -47,8 +47,8 @@ The four example rules and three runbooks from the brief's appendices are loaded
 ## Tests
 
 ```bash
-cd platform && mvn test          # 22 unit and topology tests (no Docker needed)
-python3 scripts/smoke.py         # 66 end-to-end checks against the running stack
+cd platform && mvn test          # 34 unit and topology tests (no Docker needed)
+python3 scripts/smoke.py         # 79 end-to-end checks against the running stack
 ```
 
 The smoke test covers: ingest and token check, de-duplication into one alert with a counter, one notification for
@@ -75,7 +75,7 @@ scripts/kafka_baseline.sh                                         # raw Kafka on
 
 | Ingest → alert p50 / p95 / p99 | Ingest → delivered email p50 / p99 |
 |---|---|
-| 222 / 318 / 366 ms | 411 / 610 ms |
+| 222 / 318–321 / 366–377 ms | 411–665 / 610–860 ms (two runs) |
 
 "Delivered" is the moment the email is accepted by the mail server (Mailpit), as stored per delivery. It includes 400
 alerts created within about half a second at the start of the run, all emailed at once.
@@ -135,9 +135,12 @@ sources ─► ingest.<source> topics ─► [normalise + match rules] ─► al
 
 - **One fixed topology.** Rules are records on the compacted `cfg` topic, compiled into in-memory predicates and
   indexed by source. Editing a rule restarts nothing.
-- **Any schema.** Unknown JSON is ingested with heuristic severity, time and type; rules address raw paths
-  (`payload.notional > 10000000`). A registered schema adds mapping; it never causes an event to be dropped.
-  Only non-JSON goes to `ingest.dlq`.
+- **Any format, any schema.** A source accepts JSON, JSON lines, CSV/TSV (header row), YAML, XML, key=value
+  (logfmt), syslog, form fields and plain text (one event per line). The format is detected per message unless the
+  source fixes it; a `Content-Type` is a hint. A dotted CSV header or key (`payload.notional`) becomes a nested field,
+  and numbers become numbers, so rules are the same whatever the format. Unknown schemas are ingested with heuristic
+  severity, time and type; a registered schema adds mapping and never causes an event to be dropped. Only bodies that
+  are not text at all go to `ingest.dlq`.
 - **Filter language.** A WHERE-clause subset (`AND`/`OR`/`NOT`, `IN`, `BETWEEN`, `LIKE`, `IS NULL`) parsed to one
   syntax tree used by the stream evaluator, the builder UI and the history query (compiled to parameterised SQL).
 - **Access control.** Default deny. A team owns its sources, rules and runbooks; reading another team's source
@@ -154,7 +157,8 @@ Full detail: [`docs/SPEC.md`](docs/SPEC.md). Phases and test gates: [`docs/PLAN.
 
 | To add | Do this | Code? |
 |---|---|---|
-| Source | UI → Sources → Add (gets a topic, URL and token) | No |
+| Source | UI → Sources → Add (gets a topic, URL and token; pick a message format or leave it on automatic) | No |
+| Input format | parser in `core/Formats.java` (detection + one method) | One method |
 | Schema | UI → paste a sample, pick severity/time/type fields | No |
 | Rule | UI → Rules, or `POST /api/rules` | No |
 | Runbook | UI → paste YAML, Markdown or any text | No |

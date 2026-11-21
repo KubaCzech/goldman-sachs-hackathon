@@ -3,7 +3,8 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { SAMPLES, sampleText } from '../samples.js';
-import { asArray, flattenPaths, show, tryParseJson } from '../util.js';
+import { asArray, flattenPaths, show } from '../util.js';
+import { FORMATS, FORMAT_LABELS, describeParsed, parseSampleText } from '../sampleParse.js';
 import FilterEditor, { emptyFilter, resolveFilter } from '../components/FilterEditor.jsx';
 import { Combobox, CopyButton, Empty, ErrorBox, Field, Help, Section, useConfirm } from '../components/ui.jsx';
 import { useLeaveGuard, useUnsavedChanges } from '../unsaved.jsx';
@@ -96,7 +97,7 @@ function SourceCard({ source, schemas, reload }) {
         <div>
           <strong>{source.name || source.id}</strong> <span className="badge">{source.type || 'source'}</span>
           <div className="muted">
-            ID <code>{source.id}</code> · Team {teamName(source.teamId) || '—'} · Default schema {schema ? schema.name : source.defaultSchemaId || 'none (auto-detect)'}
+            ID <code>{source.id}</code> · Team {teamName(source.teamId) || '—'} · Default schema {schema ? schema.name : source.defaultSchemaId || 'none (auto-detect)'} · Format {FORMAT_LABELS[source.format || 'auto'] || source.format}
           </div>
         </div>
         {canAdmin && (
@@ -177,7 +178,7 @@ function SourceCard({ source, schemas, reload }) {
   );
 }
 
-const EMPTY_SOURCE = { name: '', teamId: '', type: 'webhook', defaultSchemaId: '' };
+const EMPTY_SOURCE = { name: '', teamId: '', type: 'webhook', defaultSchemaId: '', format: 'auto' };
 
 function CreateSource({ schemas, onDone, onCancel }) {
   const { adminTeams } = useAuth();
@@ -190,7 +191,7 @@ function CreateSource({ schemas, onDone, onCancel }) {
     if (!form.name.trim()) { toast.error('Give the source a name.'); return false; }
     setBusy(true);
     try {
-      await api.post('/api/sources', { name: form.name.trim(), teamId, type: form.type, defaultSchemaId: form.defaultSchemaId || null });
+      await api.post('/api/sources', { name: form.name.trim(), teamId, type: form.type, defaultSchemaId: form.defaultSchemaId || null, format: form.format });
       toast.success('Source created');
       setForm(EMPTY_SOURCE);
       onDone();
@@ -221,6 +222,11 @@ function CreateSource({ schemas, onDone, onCancel }) {
         <select value={form.type} onChange={(e) => set({ type: e.target.value })}>
           <option value="webhook">Webhook (HTTP POST)</option>
           <option value="kafka">Kafka topic</option>
+        </select>
+      </Field>
+      <Field label="Message format" hint="Leave on automatic unless every message has the same format. Detection handles JSON, JSON lines, CSV/TSV with a header row, YAML, XML, key=value pairs, syslog, form fields and plain text (one event per line).">
+        <select value={form.format} onChange={(e) => set({ format: e.target.value })}>
+          {FORMATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
         </select>
       </Field>
       <Field label="Default schema">
@@ -256,17 +262,19 @@ function SchemaFromSample({ onDone, onCancel }) {
   const [suggested, setSuggested] = useState({});
   const [useMatch, setUseMatch] = useState(false);
   const [match, setMatch] = useState(emptyFilter());
+  const [detected, setDetected] = useState('');
   const teamId = teamIdRaw || (adminTeams[0] && adminTeams[0].id) || '';
 
   const infer = async () => {
     setError(null);
-    const parsed = tryParseJson(text);
-    if (!parsed.ok) return setError(`This is not valid JSON: ${parsed.error}`);
     setBusy(true);
+    const parsed = await parseSampleText(text);
+    if (!parsed.ok) { setBusy(false); return setError(parsed.empty ? 'Paste a sample event first.' : `The sample could not be read: ${parsed.error}`); }
+    setDetected(describeParsed(parsed));
     try {
       const r = (await api.post('/api/schemas/infer', { sample: parsed.value })) || {};
       let fields = asArray(r.fields);
-      if (!fields.length) fields = flattenPaths(Array.isArray(parsed.value) ? parsed.value[0] : parsed.value);
+      if (!fields.length) fields = flattenPaths(parsed.value);
       const m = r.mapping || {};
       setInferred({ fields });
       setSuggested(m);
@@ -323,8 +331,9 @@ function SchemaFromSample({ onDone, onCancel }) {
           <button type="button" key={s.id} className="btn small" onClick={() => { setText(sampleText(s.id)); setInferred(null); }}>{s.label}</button>
         ))}
       </div>
-      <Field label="Paste one example event (JSON)">
-        <textarea className="mono" rows={8} value={text} onChange={(e) => { setText(e.target.value); setInferred(null); }} placeholder='{"type": "...", "severity": "..."}' spellCheck={false} />
+      <Field label="Paste one example event" hint="Any format works: JSON, a CSV header row plus a row, YAML, XML, key=value pairs, a syslog line or plain text.">
+        <textarea className="mono" rows={8} value={text} onChange={(e) => { setText(e.target.value); setInferred(null); setDetected(''); }} placeholder={'{"type": "...", "severity": "..."}\nor  level=error service=payments msg="..."'} spellCheck={false} />
+        {detected && <div className="muted small">{detected}</div>}
       </Field>
       <ErrorBox>{error}</ErrorBox>
       <div className="row">

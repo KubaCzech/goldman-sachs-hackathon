@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpw874g",
+  "mix" : "all",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 17.534,
+  "throughputPerSec" : 34219,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 2251,
+  "produceRatePerSec" : 266548,
+  "drainSec" : 15.248,
+  "drainRatePerSec" : 39349,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 402,
+  "ingestToAlertMs" : {
+    "p50" : 6358,
+    "p95" : 14632,
+    "p99" : 15560,
+    "max" : 15622,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 2230,
+    "p95" : 2239,
+    "p99" : 2240,
+    "max" : 2270,
+    "samples" : 402
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

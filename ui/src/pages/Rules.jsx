@@ -3,7 +3,8 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { SAMPLES, sampleText } from '../samples.js';
-import { ALL_SEVERITIES, CHANNELS, CHANNEL_LABELS, asArray, flattenPaths, mergeFields, sevColor, show, tryParseJson } from '../util.js';
+import { ALL_SEVERITIES, CHANNELS, CHANNEL_LABELS, asArray, flattenPaths, mergeFields, sevColor, show } from '../util.js';
+import { describeParsed, useParsedSample } from '../sampleParse.js';
 import FilterEditor, { conditionsToAst, filterFromStored } from '../components/FilterEditor.jsx';
 import { Empty, ErrorBox, Field, Help, PathList, Section, SeverityBadge, TemplateText, useConfirm } from '../components/ui.jsx';
 import { useUnsavedChanges } from '../unsaved.jsx';
@@ -89,9 +90,10 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
       .catch((e) => toast.error(`Could not load the "resolve when" condition: ${e.message}`));
   }, [rule]);
 
-  const parsedSample = useMemo(() => tryParseJson(sample), [sample]);
+  // Any format (JSON, CSV, YAML, XML, key=value, syslog, text), read by the same parser as the stream.
+  const parsedSample = useParsedSample(sample);
   const fields = useMemo(() => {
-    const ev = parsedSample.ok ? (Array.isArray(parsedSample.value) ? parsedSample.value[0] : parsedSample.value) : null;
+    const ev = parsedSample.ok ? parsedSample.value : null;
     return mergeFields(apiFields, ev ? flattenPaths(ev) : []);
   }, [apiFields, parsedSample]);
 
@@ -145,7 +147,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
     const mine = ++seq.current;
     if (!parsedSample.ok) {
       setPreview(null);
-      setPreviewError(sample.trim() ? `The sample is not valid JSON: ${parsedSample.error}` : 'Paste or pick a sample event to see a preview.');
+      setPreviewError(sample.trim() ? (parsedSample.error ? `The sample could not be read: ${parsedSample.error}` : 'Reading the sample…') : 'Paste or pick a sample event to see a preview.');
       return undefined;
     }
     const timer = setTimeout(async () => {
@@ -439,8 +441,9 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
             <div className="row wrap">
               {SAMPLES.map((s) => <button type="button" key={s.id} className="btn small" onClick={() => setSample(sampleText(s.id))}>{s.label}</button>)}
             </div>
-            <Field label="Sample event (JSON)">
+            <Field label="Sample event" hint="Paste an event in any format: JSON, CSV with a header row, YAML, XML, key=value pairs, a syslog line or plain text.">
               <textarea className="mono" rows={9} value={sample} onChange={(e) => setSample(e.target.value)} spellCheck={false} />
+              {parsedSample.ok && <div className="muted small">{describeParsed(parsedSample)}</div>}
             </Field>
             <Field label="Pretend it came from">
               <select value={sampleSourceId} onChange={(e) => setSampleSourceId(e.target.value)}>

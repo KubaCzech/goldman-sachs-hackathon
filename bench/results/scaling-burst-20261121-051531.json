@@ -1,0 +1,175 @@
+{
+  "hostCpus": 11,
+  "capacityMethod": "burst into running processors",
+  "coreLimit": "CFS quota (docker --cpus)",
+  "drainEvents": 600000,
+  "latencyRun": {
+    "events": 45000,
+    "rate": 1500
+  },
+  "runs": [
+    {
+      "config": "2 instance(s) x unlimited, 3 stream threads each",
+      "instances": 2,
+      "cpusPerInstance": 0.0,
+      "processorCores": null,
+      "streamThreadsPerInstance": 3,
+      "capacitySpread": {
+        "runId": "bmwpw6z8z",
+        "mix": "spread",
+        "eventsSent": 600000,
+        "eventsAccountedFor": 600000,
+        "lost": 0,
+        "targetRatePerSec": 2147483647,
+        "durationSec": 13.005,
+        "throughputPerSec": 46136,
+        "alertGroups": 400,
+        "drainMode": true,
+        "producedMs": 2197,
+        "produceRatePerSec": 273100,
+        "drainSec": 10.78,
+        "drainRatePerSec": 55659,
+        "alertUpdatesObserved": 600000,
+        "notificationsObserved": 400,
+        "ingestToAlertMs": {
+          "p50": 7970,
+          "p95": 10613,
+          "p99": 11250,
+          "max": 11526,
+          "samples": 600000
+        },
+        "ingestToNotificationMs": {
+          "p50": 2168,
+          "p95": 2180,
+          "p99": 3882,
+          "max": 3898,
+          "samples": 400
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "commitIntervalMs": 100,
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 324,
+          "kafka": 327,
+          "bench": 64,
+          "other": 118
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 600000,
+          "alerts": 400,
+          "matchesEventsSent": true
+        },
+        "ingestToDeliveryMs": {
+          "deliveries": 400,
+          "p50": 1772,
+          "p99": 3946,
+          "max": 3955
+        }
+      },
+      "capacityOriginalMix": {
+        "runId": "bmwpw874g",
+        "mix": "all",
+        "eventsSent": 600000,
+        "eventsAccountedFor": 600000,
+        "lost": 0,
+        "targetRatePerSec": 2147483647,
+        "durationSec": 17.534,
+        "throughputPerSec": 34219,
+        "alertGroups": 401,
+        "drainMode": true,
+        "producedMs": 2251,
+        "produceRatePerSec": 266548,
+        "drainSec": 15.248,
+        "drainRatePerSec": 39349,
+        "alertUpdatesObserved": 600000,
+        "notificationsObserved": 402,
+        "ingestToAlertMs": {
+          "p50": 6358,
+          "p95": 14632,
+          "p99": 15560,
+          "max": 15622,
+          "samples": 600000
+        },
+        "ingestToNotificationMs": {
+          "p50": 2230,
+          "p95": 2239,
+          "p99": 2240,
+          "max": 2270,
+          "samples": 402
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "commitIntervalMs": 100,
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 183,
+          "kafka": 308,
+          "bench": 55,
+          "other": 91
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 600000,
+          "alerts": 401,
+          "matchesEventsSent": true
+        },
+        "ingestToDeliveryMs": {
+          "deliveries": 402,
+          "p50": 1354,
+          "p99": 2079,
+          "max": 2112
+        }
+      },
+      "latency": {
+        "runId": "bmwpw9dl4",
+        "mix": "spread",
+        "eventsSent": 45000,
+        "eventsAccountedFor": 45000,
+        "lost": 0,
+        "targetRatePerSec": 1500,
+        "durationSec": 30.232,
+        "throughputPerSec": 1488,
+        "alertGroups": 400,
+        "drainMode": false,
+        "producedMs": -1,
+        "produceRatePerSec": -1,
+        "drainSec": 29.991,
+        "drainRatePerSec": 1500,
+        "alertUpdatesObserved": 45000,
+        "notificationsObserved": 400,
+        "ingestToAlertMs": {
+          "p50": 222,
+          "p95": 321,
+          "p99": 377,
+          "max": 852,
+          "samples": 45000
+        },
+        "ingestToNotificationMs": {
+          "p50": 285,
+          "p95": 371,
+          "p99": 404,
+          "max": 412,
+          "samples": 400
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "commitIntervalMs": 100,
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 43,
+          "kafka": 251,
+          "bench": 19,
+          "other": 36
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 45000,
+          "alerts": 400,
+          "matchesEventsSent": true
+        },
+        "ingestToDeliveryMs": {
+          "deliveries": 400,
+          "p50": 665,
+          "p99": 860,
+          "max": 915
+        }
+      }
+    }
+  ]
+}

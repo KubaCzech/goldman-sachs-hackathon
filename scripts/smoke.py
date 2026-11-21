@@ -176,6 +176,36 @@ after = [r for r in call("GET", "/api/rules", sam)[1] if r["id"] == nosy["id"]][
 check("revoking the grant removes access again", after["allowedSources"] == [])
 call("DELETE", "/api/rules/" + nosy["id"], sam)
 
+# ---------------------------------------------------------------- any input format
+def raw(source, text, content_type=None):
+    h = {"X-Source-Token": "demo-" + source}
+    if content_type:
+        h["Content-Type"] = content_type
+    return call("POST", f"/ingest/{source}", body=text.encode() if isinstance(text, str) else text, headers=h)
+
+fmt_ids = {f: f"F{f.upper()}-{RUN}" for f in ["csv", "yaml", "xml", "logfmt", "ndjson"]}
+bodies = {
+    "csv": "meta.schema,payload.tradeId,payload.desk,payload.notional,payload.currency,payload.reason\n"
+           f"trade.rejected.v2,{fmt_ids['csv']},rates,25000000,EUR,LIMIT_BREACH\n",
+    "yaml": f"meta:\n  schema: trade.rejected.v2\npayload:\n  tradeId: {fmt_ids['yaml']}\n  desk: rates\n  notional: 25000000\n  currency: EUR\n  reason: LIMIT_BREACH\n",
+    "xml": f"<trade><meta><schema>trade.rejected.v2</schema></meta><payload><tradeId>{fmt_ids['xml']}</tradeId><desk>rates</desk>"
+           "<notional>25000000</notional><currency>EUR</currency><reason>LIMIT_BREACH</reason></payload></trade>",
+    "logfmt": f"meta.schema=trade.rejected.v2 payload.tradeId={fmt_ids['logfmt']} payload.desk=rates payload.notional=25000000 payload.currency=EUR payload.reason=LIMIT_BREACH",
+    "ndjson": json.dumps({"meta": {"schema": "trade.rejected.v2"}, "payload": {"tradeId": fmt_ids["ndjson"], "desk": "rates", "notional": 25000000, "currency": "EUR", "reason": "LIMIT_BREACH"}})
+              + "\n" + json.dumps({"meta": {"schema": "trade.rejected.v2"}, "payload": {"tradeId": fmt_ids["ndjson"] + "-2", "desk": "rates", "notional": 25000000, "currency": "EUR", "reason": "LIMIT_BREACH"}}),
+}
+for f, body in bodies.items():
+    s, r = raw("trade-gateway", body)          # no Content-Type: urllib sends a form type, which must not mislead detection
+    check(f"webhook reads {f} and says so", s == 202 and r["format"] == f and r["accepted"] == (2 if f == "ndjson" else 1), str(r))
+for f in bodies:
+    got = wait_for(lambda f=f: alerts(ravi, f"payload.tradeId = '{fmt_ids[f]}'"))
+    check(f"a {f} event raises the same alert as JSON would", bool(got) and got[0]["fields"].get("payload.reason") == "LIMIT_BREACH", str(got)[:200])
+s, r = raw("trade-gateway", "just a line of text with ERROR in it")
+check("plain text is accepted as an event", s == 202 and r["format"] == "text")
+check("a binary body is refused with a clear message", raw("trade-gateway", bytes([0, 1, 2, 3, 255, 254, 0, 9]))[0] == 400)
+s, r = call("POST", "/api/formats/parse", ravi, {"text": "level=error service=pricing msg=\"cache miss\""})
+check("the parse endpoint shows how a sample is read", s == 200 and r["format"] == "logfmt" and r["events"][0]["msg"] == "cache miss", str(r))
+
 # ---------------------------------------------------------------- private rules (a member's own rule)
 mine_rule = {"teamId": "settlements", "private": True, "name": "sara private " + RUN, "filterSql": f"workflowName = 'priv-{RUN}'",
              "sourceIds": ["settlement-bus"], "groupBy": ["workflowName"], "targets": [{"type": "team", "id": "settlements"}]}

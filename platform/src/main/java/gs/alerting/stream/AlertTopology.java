@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import gs.alerting.core.AlertEngine;
 import gs.alerting.core.Config;
+import gs.alerting.core.Formats;
 import gs.alerting.core.Event;
 import gs.alerting.core.Json;
 import gs.alerting.core.Normaliser;
@@ -19,6 +20,7 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -112,11 +114,14 @@ public final class AlertTopology {
             Config.Snapshot cfg = registry.snapshot();
             if (!cfg.sources.containsKey(sourceId)) { UNKNOWN_SOURCE.incrementAndGet(); return; }
             if (rec.value() == null) return;
-            JsonNode root;
+            // Any supported format: the source's setting wins, then the sender's Content-Type, then detection.
+            String format = Json.text(cfg.sources.get(sourceId), "format");
+            Header ct = rec.headers() == null ? null : rec.headers().lastHeader("content-type");
+            String contentType = ct == null || ct.value() == null ? null : new String(ct.value(), StandardCharsets.UTF_8);
+            List<ObjectNode> events;
             try {
-                root = Json.parse(rec.value());
-                if (root == null || !(root.isObject() || root.isArray())) throw new IllegalArgumentException("not a JSON object");
-            } catch (Exception ex) {
+                events = Formats.parse(rec.value(), format, contentType).events;
+            } catch (RuntimeException ex) {   // not text at all, or not the format the source insists on
                 DLQ.incrementAndGet();
                 ctx.forward(new Record<String, Object>(sourceId, rec.value(), rec.timestamp()), "dlq-sink");
                 return;
@@ -127,8 +132,7 @@ public final class AlertTopology {
                 try { ingestTs = Long.parseLong(new String(h.value(), StandardCharsets.US_ASCII)); } catch (NumberFormatException ignore) { }
             }
             long now = ctx.currentSystemTimeMs();
-            if (root.isArray()) { for (JsonNode n : root) if (n.isObject()) one(sourceId, n, ingestTs, now, rec.timestamp(), cfg); }
-            else one(sourceId, root, ingestTs, now, rec.timestamp(), cfg);
+            for (ObjectNode n : events) one(sourceId, n, ingestTs, now, rec.timestamp(), cfg);
         }
 
         private void one(String sourceId, JsonNode payload, long ingestTs, long now, long ts, Config.Snapshot cfg) {

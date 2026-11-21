@@ -33,9 +33,25 @@ export const SAMPLES = [
       payload: { tradeId: 'T-998877', desk: 'rates', notional: 25000000, currency: 'EUR', reason: 'LIMIT_BREACH' },
     },
   },
+  // Not JSON: the same parser the stream uses reads these (see Sources → Message format).
+  {
+    id: 'csv-trades',
+    label: 'Trades (CSV)',
+    text: 'tradeId,payload.desk,payload.notional,payload.currency,reason\nT-1001,rates,25000000,EUR,LIMIT_BREACH\nT-1002,fx,1200000,USD,PRICE_STALE',
+  },
+  {
+    id: 'logfmt-pricing',
+    label: 'Pricing log (key=value)',
+    text: 'level=warn service=pricing-engine-2 instrument=EURUSD latencyMs=1240 msg="pricing latency above 1s, cache miss"',
+  },
+  {
+    id: 'syslog',
+    label: 'Syslog line',
+    text: '<11>1 2026-10-23T09:14:02Z host-7 settlement-svc 4242 ID47 - Counterparty timeout on WF-20261023-00042',
+  },
 ];
 
 export const sampleText = (id) => {
   const s = SAMPLES.find((x) => x.id === id) || SAMPLES[0];
-  return JSON.stringify(s.event, null, 2);
+  return s.text !== undefined ? s.text : JSON.stringify(s.event, null, 2);
 };

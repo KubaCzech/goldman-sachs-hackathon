@@ -9,6 +9,7 @@ import gs.alerting.core.AlertEngine;
 import gs.alerting.core.Config;
 import gs.alerting.core.Event;
 import gs.alerting.core.Filter;
+import gs.alerting.core.Formats;
 import gs.alerting.core.Json;
 import gs.alerting.core.Normaliser;
 import gs.alerting.core.SqlParser;
@@ -97,6 +98,7 @@ public final class ApiMain {
         schemaRoutes(app);
         ruleRoutes(app);
         filterRoutes(app);
+        formatRoutes(app);
         ingestRoutes(app);
         AlertRoutes.register(app);
         RunbookRoutes.register(app);
@@ -255,7 +257,23 @@ public final class ApiMain {
         o.put("topic", "ingest." + id).put("ingestUrl", "/ingest/" + id).put("canEdit", c.teamAdmin(Json.text(s, "teamId"))).put("owned", own);
         if (!own) o.remove("token");                         // a grant lets a team read events, not write them
         if (!o.has("grantedTeamIds")) o.putArray("grantedTeamIds");
+        if (!o.has("format")) o.put("format", "auto");
         return o;
+    }
+
+    private static String format(ObjectNode b) {
+        String f = Json.text(b, "format", "auto").toLowerCase(java.util.Locale.ROOT);
+        if (!Formats.ALL.contains(f)) throw new IllegalArgumentException("format must be one of " + Formats.ALL);
+        return f;
+    }
+
+    /** A pasted sample in any format: its first event, for schema inference and rule preview. */
+    static JsonNode sampleEvent(JsonNode sample, String format) {
+        if (sample != null && sample.isObject()) return sample;
+        if (sample == null || !sample.isTextual() || sample.asText().isBlank()) throw new IllegalArgumentException("Paste a sample event");
+        List<ObjectNode> events = Formats.parse(sample.asText(), format).events;
+        if (events.isEmpty()) throw new IllegalArgumentException("The sample has no event in it");
+        return events.get(0);
     }
 
     private static void sourceRoutes(Javalin app) {
@@ -278,6 +296,7 @@ public final class ApiMain {
             ObjectNode s = Json.obj();
             String id = Store.uniqueId("source", name);
             s.put("id", id).put("teamId", team).put("name", name).put("type", type).put("defaultSchemaId", Json.text(b, "defaultSchemaId"));
+            s.put("format", format(b));
             byte[] rnd = new byte[18];
             new SecureRandom().nextBytes(rnd);
             s.put("token", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(rnd));
@@ -293,6 +312,7 @@ public final class ApiMain {
             ObjectNode s = must("source", ctx.pathParam("id")), b = body(ctx);
             c.requireTeamAdmin(Json.text(s, "teamId"));
             for (String k : List.of("name", "defaultSchemaId")) if (b.has(k)) s.set(k, b.get(k));
+            if (b.has("format")) s.put("format", format(b));
             Store.save("source", s);
             json(ctx, sourceView(s, c));
         });
@@ -340,10 +360,8 @@ public final class ApiMain {
             json(ctx, out);
         });
         app.post("/api/schemas/infer", ctx -> {
-            JsonNode sample = body(ctx).get("sample");
-            if (sample != null && sample.isTextual()) sample = Json.parse(sample.asText());
-            if (sample == null || !sample.isObject()) throw new IllegalArgumentException("Paste one JSON object as the sample");
-            json(ctx, Normaliser.infer(sample));
+            ObjectNode b = body(ctx);
+            json(ctx, Normaliser.infer(sampleEvent(b.get("sample"), Json.text(b, "format"))));
         });
         app.post("/api/schemas", ctx -> json(ctx.status(201), saveSchema(caller(ctx), body(ctx), null)));
         app.put("/api/schemas/{id}", ctx -> json(ctx, saveSchema(caller(ctx), body(ctx), ctx.pathParam("id"))));
@@ -499,9 +517,7 @@ public final class ApiMain {
             ObjectNode rb = b.has("rule") && b.get("rule").isObject() ? (ObjectNode) b.get("rule").deepCopy() : Json.obj();
             ObjectNode doc = buildRule(rb, null);
             doc.put("id", Json.text(rb, "id", "preview")).put("teamId", Json.text(rb, "teamId", ""));
-            JsonNode sample = b.get("sample");
-            if (sample != null && sample.isTextual()) sample = Json.parse(sample.asText());
-            if (sample == null || !sample.isObject()) throw new IllegalArgumentException("Provide a sample event (one JSON object)");
+            JsonNode sample = sampleEvent(b.get("sample"), Json.text(b, "format"));
             Config.Snapshot cfg = Store.registry.snapshot();
             String sourceId = Json.text(b, "sourceId");
             if (sourceId == null || sourceId.isBlank()) { List<String> s = Json.strings(doc.get("sourceIds")); sourceId = s.isEmpty() ? "preview" : s.get(0); }
@@ -520,6 +536,20 @@ public final class ApiMain {
             ArrayNode u = out.putArray("unresolved");
             unresolved.forEach(u::add);
             out.put("alertKey", rule.alertKey(e)).put("filterSql", Json.text(doc, "filterSql"));
+            json(ctx, out);
+        });
+    }
+
+    private static void formatRoutes(Javalin app) {
+        // What the system makes of a pasted payload: the detected format and the events it holds (first 50).
+        app.post("/api/formats/parse", ctx -> {
+            caller(ctx);
+            ObjectNode b = body(ctx);
+            Formats.Parsed p = Formats.parse(Json.text(b, "text", ""), Json.text(b, "format"));
+            ObjectNode out = Json.obj().put("format", p.format).put("count", p.events.size());
+            ArrayNode ev = out.putArray("events");
+            p.events.stream().limit(50).forEach(ev::add);
+            out.set("formats", Json.M.valueToTree(Formats.ALL));
             json(ctx, out);
         });
     }
@@ -583,11 +613,17 @@ public final class ApiMain {
             }
             byte[] bodyBytes = ctx.bodyAsBytes();
             if (bodyBytes.length == 0) throw new IllegalArgumentException("Empty body");
+            // Parsed here only to tell the sender what was understood; the processor parses again in the stream.
+            String contentType = ctx.header("Content-Type");
+            Formats.Parsed parsed;
+            try { parsed = Formats.parse(bodyBytes, Json.text(src, "format"), contentType); }
+            catch (Formats.NotText e) { throw new IllegalArgumentException("The body is not text. Send JSON, CSV, YAML, XML, key=value pairs or plain text."); }
             ProducerRecord<String, byte[]> rec = new ProducerRecord<>("ingest." + sourceId, null, bodyBytes);
             rec.headers().add("ingest-ts", String.valueOf(System.currentTimeMillis()).getBytes(StandardCharsets.US_ASCII));
+            if (contentType != null) rec.headers().add("content-type", contentType.getBytes(StandardCharsets.UTF_8));
             ingestProducer.send(rec);
             INGESTED.incrementAndGet();
-            json(ctx.status(202), Json.obj().put("accepted", 1));
+            json(ctx.status(202), Json.obj().put("accepted", parsed.events.size()).put("format", parsed.format));
         });
         // Stand-in for the systems that runbook actions call (retry a workflow, restart a service, open a ticket...).
         io.javalin.http.Handler mock = ctx -> {
