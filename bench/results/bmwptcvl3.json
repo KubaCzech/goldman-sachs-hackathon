@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwptcvl3",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 9.461,
+  "throughputPerSec" : 31709,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 1362,
+  "produceRatePerSec" : 220264,
+  "drainSec" : 8.07,
+  "drainRatePerSec" : 37175,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 3429,
+    "p95" : 7681,
+    "p99" : 8169,
+    "max" : 8191,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 1327,
+    "p95" : 1344,
+    "p99" : 1345,
+    "max" : 1519,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

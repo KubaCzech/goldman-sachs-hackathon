@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { toast } from '../toast.js';
 import { CHANNELS, CHANNEL_LABELS, SEVERITIES, asArray } from '../util.js';
-import { Empty, ErrorBox, Field, Section, SeverityBadge } from '../components/ui.jsx';
+import { Combobox, Empty, ErrorBox, Field, Section, SeverityBadge } from '../components/ui.jsx';
+import { useUnsavedChanges } from '../unsaved.jsx';
 
 const FALLBACK_ZONES = ['UTC', 'Europe/London', 'Europe/Warsaw', 'Europe/Paris', 'America/New_York', 'America/Chicago', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Kolkata'];
 function timezones() {
@@ -15,6 +16,7 @@ function timezones() {
   return FALLBACK_ZONES;
 }
 const ZONES = timezones();
+const ZONE_OPTIONS = ZONES.map((z) => ({ value: z }));
 
 function normalise(p) {
   const src = p && typeof p === 'object' ? p : {};
@@ -37,10 +39,41 @@ export default function Preferences() {
   const [prefs, setPrefs] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const savedSnapshot = useRef(null);
+
+  const loaded = (p) => {
+    const n = normalise(p);
+    savedSnapshot.current = JSON.stringify(n);
+    setPrefs(n);
+  };
 
   useEffect(() => {
-    api.get('/api/me/preferences').then((p) => setPrefs(normalise(p))).catch((e) => setError(e.message));
+    api.get('/api/me/preferences').then(loaded).catch((e) => setError(e.message));
   }, []);
+
+  const save = async () => {
+    if (!prefs) return false;
+    if (prefs.quietHours.enabled && !ZONES.includes(prefs.quietHours.timezone)) {
+      toast.error('Choose a time zone from the list.');
+      return false;
+    }
+    setSaving(true);
+    try {
+      const channels = { ...prefs.channels };
+      [...SEVERITIES, 'unknown'].forEach((s) => { channels[s] = asArray(channels[s]); });
+      const saved = await api.put('/api/me/preferences', { ...prefs, channels });
+      if (saved && typeof saved === 'object' && (saved.channels || saved.quietHours)) loaded(saved);
+      else savedSnapshot.current = JSON.stringify(prefs);
+      toast.success('Preferences saved');
+      return true;
+    } catch (e) {
+      toast.error(e);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+  useUnsavedChanges(!!prefs && JSON.stringify(prefs) !== savedSnapshot.current, save);
 
   if (error && !prefs) return <div><div className="page-head"><h1>My preferences</h1></div><ErrorBox>{error}</ErrorBox></div>;
   if (!prefs) return <Empty>Loading your preferences…</Empty>;
@@ -51,21 +84,6 @@ export default function Preferences() {
     const cur = asArray(prefs.channels[sev]);
     const next = cur.includes(ch) ? cur.filter((c) => c !== ch) : [...cur, ch];
     set({ channels: { ...prefs.channels, [sev]: next } });
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const channels = { ...prefs.channels };
-      [...SEVERITIES, 'unknown'].forEach((s) => { channels[s] = asArray(channels[s]); });
-      const saved = await api.put('/api/me/preferences', { ...prefs, channels });
-      if (saved && typeof saved === 'object' && (saved.channels || saved.quietHours)) setPrefs(normalise(saved));
-      toast.success('Preferences saved');
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const q = prefs.quietHours;
@@ -85,7 +103,7 @@ export default function Preferences() {
         </div>
       </Section>
 
-      <Section title="How should we reach you?" hint="Tick the channels to use for each severity. A rule can override this when it names its own channels.">
+      <Section title="How should we reach you?" hint="Tick the channels to use for each severity. A severity with nothing ticked sends no notification; the alert still appears in the alert feed. A rule can override this when it names its own channels.">
         <table className="table matrix">
           <thead>
             <tr><th>Severity</th>{CHANNELS.map((c) => <th key={c}>{CHANNEL_LABELS[c]}</th>)}</tr>
@@ -104,7 +122,6 @@ export default function Preferences() {
           </tbody>
         </table>
         {needsPhone && <div className="warn-box">Add a phone number above, otherwise SMS and phone notifications cannot reach you.</div>}
-        <div className="hint">A severity with nothing ticked sends no notification; the alert still appears in the alert feed.</div>
       </Section>
 
       <Section title="Quiet hours" hint="During quiet hours every notification uses one fallback channel instead.">
@@ -114,11 +131,17 @@ export default function Preferences() {
         <div className="row wrap">
           <Field label="From"><input type="time" value={q.start} disabled={!q.enabled} onChange={(e) => setQuiet({ start: e.target.value })} /></Field>
           <Field label="Until"><input type="time" value={q.end} disabled={!q.enabled} onChange={(e) => setQuiet({ end: e.target.value })} /></Field>
-          <Field label="Time zone">
-            <select value={q.timezone} disabled={!q.enabled} onChange={(e) => setQuiet({ timezone: e.target.value })}>
-              {!ZONES.includes(q.timezone) && <option value={q.timezone}>{q.timezone}</option>}
-              {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-            </select>
+          <Field label="Time zone" hint="Type to search, then pick a time zone from the list.">
+            <Combobox
+              className="tz-input"
+              strict
+              value={q.timezone}
+              options={ZONE_OPTIONS}
+              disabled={!q.enabled}
+              onChange={(timezone) => setQuiet({ timezone })}
+              placeholder="e.g. Europe/London"
+              aria-label="Time zone"
+            />
           </Field>
           <Field label="During quiet hours, use">
             <select value={q.fallbackChannel} disabled={!q.enabled} onChange={(e) => setQuiet({ fallbackChannel: e.target.value })}>

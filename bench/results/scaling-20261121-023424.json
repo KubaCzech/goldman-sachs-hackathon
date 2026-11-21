@@ -1,0 +1,146 @@
+{
+  "hostCpus": 11,
+  "drainEvents": 100000,
+  "latencyRun": {
+    "events": 20000,
+    "rate": 1000
+  },
+  "runs": [
+    {
+      "config": "2 instance(s) x 1 core(s), 2 stream threads each",
+      "instances": 2,
+      "cpusPerInstance": 1.0,
+      "processorCores": 2.0,
+      "streamThreadsPerInstance": 2,
+      "capacitySpread": {
+        "runId": "bmwpqf5at",
+        "mix": "spread",
+        "eventsSent": 100000,
+        "eventsAccountedFor": 100000,
+        "lost": 0,
+        "targetRatePerSec": 2147483647,
+        "durationSec": 43.165,
+        "throughputPerSec": 2317,
+        "alertGroups": 400,
+        "drainMode": true,
+        "drainSec": 7.015,
+        "drainRatePerSec": 14255,
+        "alertUpdatesObserved": 100000,
+        "notificationsObserved": 400,
+        "ingestToAlertMs": {
+          "p50": 40961,
+          "p95": 42576,
+          "p99": 42858,
+          "max": 42877,
+          "samples": 100000
+        },
+        "ingestToNotificationMs": {
+          "p50": 37044,
+          "p95": 39379,
+          "p99": 39473,
+          "max": 39511,
+          "samples": 400
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 49,
+          "kafka": 127,
+          "bench": 9,
+          "other": 15
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 100000,
+          "alerts": 400,
+          "matchesEventsSent": true
+        }
+      },
+      "capacityOriginalMix": {
+        "runId": "bmwpqgu9i",
+        "mix": "all",
+        "eventsSent": 100000,
+        "eventsAccountedFor": 100000,
+        "lost": 0,
+        "targetRatePerSec": 2147483647,
+        "durationSec": 43.607,
+        "throughputPerSec": 2293,
+        "alertGroups": 401,
+        "drainMode": true,
+        "drainSec": 7.025,
+        "drainRatePerSec": 14235,
+        "alertUpdatesObserved": 100000,
+        "notificationsObserved": 400,
+        "ingestToAlertMs": {
+          "p50": 40099,
+          "p95": 43100,
+          "p99": 43239,
+          "max": 43325,
+          "samples": 100000
+        },
+        "ingestToNotificationMs": {
+          "p50": 38153,
+          "p95": 38951,
+          "p99": 38957,
+          "max": 39183,
+          "samples": 400
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 52,
+          "kafka": 118,
+          "bench": 9,
+          "other": 15
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 100000,
+          "alerts": 401,
+          "matchesEventsSent": true
+        }
+      },
+      "latency": {
+        "runId": "bmwpqift9",
+        "mix": "spread",
+        "eventsSent": 20000,
+        "eventsAccountedFor": 20000,
+        "lost": 0,
+        "targetRatePerSec": 1000,
+        "durationSec": 20.26,
+        "throughputPerSec": 987,
+        "alertGroups": 400,
+        "drainMode": false,
+        "drainSec": 20.09,
+        "drainRatePerSec": 996,
+        "alertUpdatesObserved": 20000,
+        "notificationsObserved": 400,
+        "ingestToAlertMs": {
+          "p50": 196,
+          "p95": 300,
+          "p99": 355,
+          "max": 713,
+          "samples": 20000
+        },
+        "ingestToNotificationMs": {
+          "p50": 229,
+          "p95": 330,
+          "p99": 374,
+          "max": 392,
+          "samples": 400
+        },
+        "processingGuarantee": "exactly_once_v2",
+        "note": "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed).",
+        "cpuPercentAvgWhileBusy": {
+          "processor": 51,
+          "kafka": 206,
+          "bench": 21,
+          "other": 30
+        },
+        "postgresCheck": {
+          "sumOfAlertCounts": 20000,
+          "alerts": 400,
+          "matchesEventsSent": true
+        }
+      }
+    }
+  ]
+}

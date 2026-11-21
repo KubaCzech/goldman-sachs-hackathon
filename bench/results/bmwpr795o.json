@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpr795o",
+  "mix" : "spread",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 44.597,
+  "throughputPerSec" : 6727,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "drainSec" : 8.266,
+  "drainRatePerSec" : 36293,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 42352,
+    "p95" : 43965,
+    "p99" : 44134,
+    "max" : 44189,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 36630,
+    "p95" : 37876,
+    "p99" : 37971,
+    "max" : 37985,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

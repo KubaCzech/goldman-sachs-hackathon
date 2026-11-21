@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpuubpj",
+  "mix" : "spread",
+  "eventsSent" : 45000,
+  "eventsAccountedFor" : 45000,
+  "lost" : 0,
+  "targetRatePerSec" : 1500,
+  "durationSec" : 30.257,
+  "throughputPerSec" : 1487,
+  "alertGroups" : 400,
+  "drainMode" : false,
+  "producedMs" : -1,
+  "produceRatePerSec" : -1,
+  "drainSec" : 30.042,
+  "drainRatePerSec" : 1498,
+  "alertUpdatesObserved" : 45000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 201,
+    "p95" : 295,
+    "p99" : 324,
+    "max" : 405,
+    "samples" : 45000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 250,
+    "p95" : 317,
+    "p99" : 330,
+    "max" : 354,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

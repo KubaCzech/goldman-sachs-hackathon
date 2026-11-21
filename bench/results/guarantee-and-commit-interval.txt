@@ -1,0 +1,45 @@
+
+=== 2 instance(s) x unlimited, 3 stream threads each ===
+  capacity, spread keys :  55,939/s over 10.726s, lost 0, postgres ok True, cpu% {'processor': 344, 'kafka': 344, 'bench': 60, 'other': 60}, produced at 367,422/s
+  capacity, original mix:  51,738/s over 11.597s, lost 0, postgres ok True, cpu% {'processor': 198, 'kafka': 255, 'bench': 60, 'other': 68}
+  latency at 1,500/s: p50 215 / p95 314 / p99 397 ms, delivery {'deliveries': 400, 'p50': 668, 'p99': 1018, 'max': 1038}, lost 0, postgres ok True
+
+Restoring the default deployment (2 instances, 3 threads, no CPU limit)
+
+Docker host: 11 CPUs. Capacity = burst into running processors, 600,000 events. Latency at 1,500 events/s.
+processor tier                                                          spread/s per core orig mix/s proc CPU% kafka CPU%   p50   p99 lost    pg
+2 instance(s) x unlimited, 3 stream threads each                          55,939        -     51,738       344        344   215   397    0  True
+Written to /Users/Kuba/Desktop/gs-hackathon/goldman-sachs-hackathon/bench/results/scaling-burst-20261121-041650.json
+
+=== 2 instance(s) x unlimited, 3 stream threads each, at_least_once ===
+  capacity, spread keys :  51,507/s over 11.649s, lost 0, postgres ok True, cpu% {'processor': 339, 'kafka': 316, 'bench': 85, 'other': 72}, produced at 312,500/s
+  capacity, original mix:  42,833/s over 14.008s, lost 0, postgres ok True, cpu% {'processor': 181, 'kafka': 275, 'bench': 85, 'other': 85}
+  latency at 1,500/s: p50 18 / p95 28 / p99 73 ms, delivery {'deliveries': 400, 'p50': 573, 'p99': 1015, 'max': 1046}, lost 0, postgres ok True
+
+Restoring the default deployment (2 instances, 3 threads, no CPU limit)
+
+Docker host: 11 CPUs. Capacity = burst into running processors, 600,000 events. Latency at 1,500 events/s.
+processor tier                                                          spread/s per core orig mix/s proc CPU% kafka CPU%   p50   p99 lost    pg
+2 instance(s) x unlimited, 3 stream threads each, at_least_once           51,507        -     42,833       339        316    18    73    0  True
+Written to /Users/Kuba/Desktop/gs-hackathon/goldman-sachs-hackathon/bench/results/scaling-burst-20261121-042049.json
+
+=== 2 instance(s) x unlimited, 3 stream threads each, commit 1000 ms ===
+  capacity, spread keys :  60,411/s over 9.932s, lost 0, postgres ok True, cpu% {'processor': 405, 'kafka': 289, 'bench': 43, 'other': 61}, produced at 452,830/s
+  capacity, original mix:  43,901/s over 13.667s, lost 0, postgres ok True, cpu% {'processor': 194, 'kafka': 249, 'bench': 68, 'other': 61}
+  latency at 1,500/s: p50 1676 / p95 1986 / p99 2068 ms, delivery {'deliveries': 400, 'p50': 1791, 'p99': 2371, 'max': 2454}, lost 0, postgres ok True
+
+Restoring the default deployment (2 instances, 3 threads, no CPU limit)
+
+Docker host: 11 CPUs. Capacity = burst into running processors, 600,000 events. Latency at 1,500 events/s.
+processor tier                                                          spread/s per core orig mix/s proc CPU% kafka CPU%   p50   p99 lost    pg
+2 instance(s) x unlimited, 3 stream threads each, commit 1000 ms          60,411        -     43,901       405        289  1676  2068    0  True
+Written to /Users/Kuba/Desktop/gs-hackathon/goldman-sachs-hackathon/bench/results/scaling-burst-20261121-042443.json
+ Container goldman-sachs-hackathon-processor-12  Recreate
+ Container goldman-sachs-hackathon-processor-13  Recreate
+ Container goldman-sachs-hackathon-processor-13  Recreated
+ Container goldman-sachs-hackathon-processor-12  Recreated
+ Container goldman-sachs-hackathon-processor-13  Starting
+ Container goldman-sachs-hackathon-processor-13  Started
+ Container goldman-sachs-hackathon-processor-12  Starting
+ Container goldman-sachs-hackathon-processor-12  Started
+DONE

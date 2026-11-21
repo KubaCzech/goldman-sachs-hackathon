@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpskmu6",
+  "mix" : "spread",
+  "eventsSent" : 45000,
+  "eventsAccountedFor" : 45000,
+  "lost" : 0,
+  "targetRatePerSec" : 1500,
+  "durationSec" : 30.234,
+  "throughputPerSec" : 1488,
+  "alertGroups" : 400,
+  "drainMode" : false,
+  "drainSec" : 30.128,
+  "drainRatePerSec" : 1494,
+  "alertUpdatesObserved" : 45000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 230,
+    "p95" : 324,
+    "p99" : 362,
+    "max" : 423,
+    "samples" : 45000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 255,
+    "p95" : 363,
+    "p99" : 392,
+    "max" : 412,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

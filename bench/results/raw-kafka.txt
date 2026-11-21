@@ -1,0 +1,20 @@
+# Raw Kafka, single broker (RF 1), broker pinned to N dedicated cores, perf tools on cores 6-10. 2,000,000 events of the three sample shapes, acks=all, idempotent, lz4.
+### broker on 1 core(s)
+2000000 records sent, 815993.472052 records/sec (183.36 MB/sec), 181.76 ms avg latency, 615.00 ms max latency, 12 ms 50th, 581 ms 95th, 600 ms 99th, 611 ms 99.9th.
+2026-11-21 03:36:16:391, 2026-11-21 03:36:17:430, 449.4105, 432.5414, 2000000, 1924927.8152, 141, 898, 500.4571, 2227171.4922
+### broker on 2 core(s)
+2000000 records sent, 1808318.264014 records/sec (406.34 MB/sec), 5.39 ms avg latency, 129.00 ms max latency, 2 ms 50th, 23 ms 95th, 33 ms 99th, 38 ms 99.9th.
+2026-11-21 03:36:28:166, 2026-11-21 03:36:29:137, 449.4105, 462.8326, 2000000, 2059732.2348, 131, 840, 535.0125, 2380952.3810
+### broker on 4 core(s)
+2000000 records sent, 2188183.807440 records/sec (491.70 MB/sec), 1.17 ms avg latency, 131.00 ms max latency, 1 ms 50th, 3 ms 95th, 7 ms 99th, 9 ms 99.9th.
+2026-11-21 03:36:39:111, 2026-11-21 03:36:40:045, 449.4105, 481.1676, 2000000, 2141327.6231, 124, 810, 554.8278, 2469135.8025
+### broker on 6 core(s)
+2000000 records sent, 2207505.518764 records/sec (496.04 MB/sec), 0.98 ms avg latency, 132.00 ms max latency, 1 ms 50th, 3 ms 95th, 7 ms 99th, 10 ms 99.9th.
+2026-11-21 03:36:50:039, 2026-11-21 03:36:51:017, 449.4105, 459.5199, 2000000, 2044989.7751, 134, 844, 532.4769, 2369668.2464
+
+# Raw Kafka, main stack: 3 brokers (RF 3, min ISR 2), no pinning.
+== Raw produce: 2000000 events, acks=all, RF 3, idempotent, lz4 ==
+2000000 records sent, 1587301.587302 records/sec (356.67 MB/sec), 14.17 ms avg latency, 542.00 ms max latency, 4 ms 50th, 39 ms 95th, 345 ms 99th, 407 ms 99.9th.
+== Raw consume: 2000000 events, read_committed ==
+start.time, end.time, data.consumed.in.MB, MB.sec, data.consumed.in.nMsg, nMsg.sec, rebalance.time.ms, fetch.time.ms, fetch.MB.sec, fetch.nMsg.sec
+2026-11-21 03:11:00:662, 2026-11-21 03:11:01:193, 449.4105, 846.3474, 2000000, 3766478.3427, 135, 396, 1134.8750, 5050505.0505

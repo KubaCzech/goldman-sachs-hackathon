@@ -5,7 +5,8 @@ import { api, getToken } from './api.js';
 import { toast } from './toast.js';
 import { useTheme } from './theme.jsx';
 import { asArray } from './util.js';
-import { Toasts } from './components/ui.jsx';
+import { Empty, Toasts } from './components/ui.jsx';
+import { UnsavedChangesProvider, useLeaveGuard } from './unsaved.jsx';
 import Login from './pages/Login.jsx';
 import Feed from './pages/Feed.jsx';
 import AlertDetail from './pages/AlertDetail.jsx';
@@ -21,8 +22,11 @@ const NAV = [
   ['/sources', 'Sources'],
   ['/runbooks', 'Runbooks'],
   ['/preferences', 'My preferences'],
-  ['/admin', 'Admin'],
+  ['/admin', 'Admin', 'anyAdmin'],
 ];
+
+// Admin page: platform admins (channel failure injection) and team admins (their team's notification policy).
+const isAnyAdmin = (me) => !!me && (!!me.platformAdmin || asArray(me.teams).some((t) => t.role === 'admin'));
 
 function roleSummary(me) {
   if (!me) return '';
@@ -48,6 +52,7 @@ function TopBar() {
   const { me, users, login } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const guard = useLeaveGuard();
   const [allUsers, setAllUsers] = useState(users);
 
   useEffect(() => {
@@ -55,9 +60,14 @@ function TopBar() {
     else api.get('/api/auth/users').then((u) => setAllUsers(asArray(u))).catch(() => {});
   }, [users]);
 
-  const switchTo = async (username) => {
+  const switchTo = (username) => {
     if (!username) return;
     if (username === '__login') return navigate('/login');
+    // Switching user reloads every page, so unsaved edits would be lost: ask first.
+    guard(() => doSwitch(username));
+  };
+
+  const doSwitch = async (username) => {
     try {
       await login(username);
       toast.success(`Now signed in as ${username}`);
@@ -72,7 +82,7 @@ function TopBar() {
         <span className="brand-dot" /> Alerting
       </div>
       <nav className="nav">
-        {NAV.map(([to, label]) => (
+        {NAV.filter(([, , only]) => !only || (only === 'anyAdmin' ? isAnyAdmin(me) : me[only])).map(([to, label]) => (
           <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
             {label}
           </NavLink>
@@ -112,6 +122,14 @@ function TopBar() {
   );
 }
 
+function PlatformAdminOnly({ children }) {
+  const { me } = useAuth();
+  if (!isAnyAdmin(me)) {
+    return <Empty title="Not allowed">Only team admins and platform admins can open the Admin page.</Empty>;
+  }
+  return children;
+}
+
 function Shell({ children }) {
   const { me, loading } = useAuth();
   const location = useLocation();
@@ -130,7 +148,7 @@ function Shell({ children }) {
 
 export default function App() {
   return (
-    <>
+    <UnsavedChangesProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Shell><Feed /></Shell>} />
@@ -139,10 +157,10 @@ export default function App() {
         <Route path="/rules" element={<Shell><Rules /></Shell>} />
         <Route path="/runbooks" element={<Shell><Runbooks /></Shell>} />
         <Route path="/preferences" element={<Shell><Preferences /></Shell>} />
-        <Route path="/admin" element={<Shell><Admin /></Shell>} />
+        <Route path="/admin" element={<Shell><PlatformAdminOnly><Admin /></PlatformAdminOnly></Shell>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toasts />
-    </>
+    </UnsavedChangesProvider>
   );
 }

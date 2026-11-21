@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { asArray, show } from '../util.js';
-import { Empty, ErrorBox, Field, Section } from '../components/ui.jsx';
+import { Empty, ErrorBox, Field, Section, useConfirm } from '../components/ui.jsx';
+import { useUnsavedChanges } from '../unsaved.jsx';
 
 const EXAMPLE = `runbook: settlement-timeout
 matches:
@@ -87,20 +88,26 @@ function RunbookEditor({ runbook, onClose }) {
   };
 
   const save = async () => {
-    if (!content.trim()) return toast.error('Paste the runbook text first.');
-    if (!teamId) return toast.error('Choose the team that owns this runbook.');
+    if (!content.trim()) { toast.error('Paste the runbook text first.'); return false; }
+    if (!teamId) { toast.error('Choose the team that owns this runbook.'); return false; }
     setBusy(true);
     try {
       if (isNew) await api.post('/api/runbooks', body());
       else await api.put(`/api/runbooks/${encodeURIComponent(runbook.id)}`, body());
       toast.success(isNew ? 'Runbook created' : 'Runbook saved');
       onClose(true);
+      return true;
     } catch (e) {
       toast.error(e);
+      return false;
     } finally {
       setBusy(false);
     }
   };
+
+  const initial = useRef(JSON.stringify([name, teamIdRaw, format, content]));
+  const dirty = JSON.stringify([name, teamIdRaw, format, content]) !== initial.current;
+  const guard = useUnsavedChanges(dirty, save);
 
   const teamOptions = adminTeams.some((t) => t.id === teamId) || !teamId ? adminTeams : [...adminTeams, { id: teamId, name: teamName(teamId) }];
 
@@ -132,7 +139,7 @@ function RunbookEditor({ runbook, onClose }) {
       <div className="row">
         <button type="button" className="btn" onClick={preview} disabled={busy || !content.trim()}>Preview parse</button>
         <button type="button" className="btn primary" onClick={save} disabled={busy}>Save runbook</button>
-        <button type="button" className="btn" onClick={() => onClose(false)}>Cancel</button>
+        <button type="button" className="btn" onClick={() => guard(() => onClose(false))}>Cancel</button>
       </div>
       {parsed && (
         <>
@@ -149,6 +156,7 @@ export default function Runbooks() {
   const [runbooks, setRunbooks] = useState(null);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(undefined); // undefined = list, null = new, object = edit
+  const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(() => {
     api.get('/api/runbooks').then((r) => { setRunbooks(asArray(r)); setError(null); }).catch((e) => { setRunbooks([]); setError(e.message); });
@@ -156,7 +164,13 @@ export default function Runbooks() {
   useEffect(load, [load]);
 
   const remove = async (r) => {
-    if (!window.confirm(`Delete the runbook "${r.name || r.id}"?`)) return;
+    const ok = await confirm({
+      title: `Delete the runbook "${r.name || r.id}"?`,
+      body: 'Rules that use it will no longer show these steps. This cannot be undone.',
+      cancelLabel: 'Keep runbook',
+      confirmLabel: 'Delete runbook',
+    });
+    if (!ok) return;
     try {
       await api.del(`/api/runbooks/${encodeURIComponent(r.id)}`);
       toast.success('Runbook deleted');
@@ -213,6 +227,7 @@ export default function Runbooks() {
           </div>
         )
       )}
+      {confirmDialog}
     </div>
   );
 }

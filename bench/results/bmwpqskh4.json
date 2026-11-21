@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpqskh4",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 59.193,
+  "throughputPerSec" : 5068,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "drainSec" : 19.464,
+  "drainRatePerSec" : 15413,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 52902,
+    "p95" : 58000,
+    "p99" : 58546,
+    "max" : 58655,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 42566,
+    "p95" : 44166,
+    "p99" : 44171,
+    "max" : 44172,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

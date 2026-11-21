@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpv15eq",
+  "mix" : "spread",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 19.222,
+  "throughputPerSec" : 31214,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "producedMs" : 3447,
+  "produceRatePerSec" : 174064,
+  "drainSec" : 15.478,
+  "drainRatePerSec" : 38765,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 10267,
+    "p95" : 17144,
+    "p99" : 17833,
+    "max" : 18136,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 3438,
+    "p95" : 3447,
+    "p99" : 3448,
+    "max" : 3467,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

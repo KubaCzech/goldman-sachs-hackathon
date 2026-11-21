@@ -460,3 +460,19 @@ These supersede the sections above where they differ.
 - **Postgres is not published to the host.** Processor and dispatcher health ports are internal to the compose network.
 - **Benchmark** writes to `bench/results/<runId>.json` and tallies per-alert counter growth so that it can run
   against a stack that already has open alerts.
+- **Private rules:** `POST /api/rules` accepts `"private": true`. Any member of `teamId` may create one; the server
+  sets `ownerUserId` to the caller and forces `targets` to that user. The rule still reads only the sources its team
+  may read. Its alerts carry `ownerUserId` and are visible only to the owner and platform admins (list, detail,
+  live feed). The owner edits and deletes it; team admins do not see it. Team rules have `ownerUserId: null`.
+- **Config snapshot (stream):** a reader never receives the initial empty snapshot. Before the first build readers
+  wait; afterwards one thread rebuilds while the others keep the previous snapshot, and re-applying an unchanged
+  document does not trigger a rebuild. (Found by the benchmark: events were dropped at processor start-up when
+  several stream threads raced for the first snapshot.)
+- **Dispatcher concurrency:** each poll batch is grouped by recipient (record key); groups are sent in parallel
+  (`DISPATCH_CONCURRENCY`, default 8), each group in order. Offsets are committed after the whole batch, so delivery
+  stays at-least-once with the Postgres idempotency key.
+- **Theme:** user preference `theme` (`light` | `dark`) on `GET/PUT /api/me/preferences`.
+- **Benchmark (13):** capacity is measured by a burst into running processors (`BENCH_DRAIN=true`, see
+  `scripts/bench_scaling.py`); ingest → delivered latency is read from the `deliveries` table. Core limits use
+  dedicated cores (`docker update --cpuset-cpus`); CPU quotas (`--cpus`) were tried and rejected because CFS
+  throttling stalls exactly-once commits and distorts the result.

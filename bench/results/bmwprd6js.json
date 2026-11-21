@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwprd6js",
+  "mix" : "spread",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 56.566,
+  "throughputPerSec" : 5304,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "drainSec" : 17.911,
+  "drainRatePerSec" : 16749,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 50869,
+    "p95" : 55723,
+    "p99" : 55993,
+    "max" : 56168,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 38757,
+    "p95" : 43120,
+    "p99" : 43175,
+    "max" : 43221,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

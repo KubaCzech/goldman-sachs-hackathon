@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpro13s",
+  "mix" : "spread",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 53.124,
+  "throughputPerSec" : 5647,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "drainSec" : 16.696,
+  "drainRatePerSec" : 17968,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 48143,
+    "p95" : 52103,
+    "p99" : 52655,
+    "max" : 52732,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 40042,
+    "p95" : 41581,
+    "p99" : 41742,
+    "max" : 42064,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

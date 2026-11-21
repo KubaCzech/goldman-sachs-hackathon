@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpudoip",
+  "mix" : "spread",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 12.066,
+  "throughputPerSec" : 49727,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "producedMs" : 1325,
+  "produceRatePerSec" : 452830,
+  "drainSec" : 9.932,
+  "drainRatePerSec" : 60411,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 8638,
+    "p95" : 10653,
+    "p99" : 10825,
+    "max" : 11088,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 3070,
+    "p95" : 4120,
+    "p99" : 4123,
+    "max" : 4125,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 1000,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

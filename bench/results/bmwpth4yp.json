@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpth4yp",
+  "mix" : "spread",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 16.163,
+  "throughputPerSec" : 18561,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "producedMs" : 518,
+  "produceRatePerSec" : 579151,
+  "drainSec" : 15.102,
+  "drainRatePerSec" : 19865,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 12147,
+    "p95" : 15226,
+    "p99" : 15496,
+    "max" : 15707,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 4926,
+    "p95" : 7157,
+    "p99" : 9779,
+    "max" : 9889,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

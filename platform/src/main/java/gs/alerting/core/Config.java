@@ -21,6 +21,8 @@ public final class Config {
 
     public static final class Rule {
         public String id, teamId, name, severityOverride, titleTpl, bodyTpl, color, runbookId;
+        /** Set for a private rule: only this user is notified and only this user sees its alerts. */
+        public String ownerUserId;
         public boolean enabled;
         public Filter.Pred filter, resolveWhen;
         public List<String> groupBy, channels, fields;
@@ -33,6 +35,8 @@ public final class Config {
             r.doc = d;
             r.id = Json.text(d, "id");
             r.teamId = Json.text(d, "teamId");
+            r.ownerUserId = Json.text(d, "ownerUserId");
+            if (r.ownerUserId != null && r.ownerUserId.isBlank()) r.ownerUserId = null;
             r.name = Json.text(d, "name", r.id);
             r.enabled = d.path("enabled").asBoolean(true);
             r.filter = Filter.compile(d.get("filter"));
@@ -100,30 +104,50 @@ public final class Config {
 
     private final Map<String, JsonNode> docs = new ConcurrentHashMap<>();
     private volatile Snapshot snapshot = new Snapshot();
-    private volatile boolean dirty = false;
+    // Every effective apply bumps the version. One thread rebuilds; the others keep matching with the previous snapshot
+    // (a rule edit seen a few milliseconds later is the same as the event arriving earlier), so a config change never
+    // pauses matching. The exception is before the first build: the initial snapshot is empty, and handing it out
+    // silently dropped events at processor start-up as "unknown source" / "rule missing", so those readers wait.
+    private final java.util.concurrent.atomic.AtomicLong version = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.locks.ReentrantLock buildLock = new java.util.concurrent.locks.ReentrantLock();
+    private volatile long builtVersion = 0;
+    private volatile boolean built = false;
 
     /** Apply one cfg record. A null value is a tombstone. */
     public void apply(String key, String value) {
         if (key == null) return;
-        if (value == null || value.isEmpty()) docs.remove(key);
-        else {
-            try { docs.put(key, Json.M.readTree(value)); } catch (Exception e) { return; }
+        if (value == null || value.isEmpty()) {
+            if (docs.remove(key) == null) return;
+        } else {
+            JsonNode doc;
+            try { doc = Json.M.readTree(value); } catch (Exception e) { return; }
+            if (doc.equals(docs.put(key, doc))) return;   // unchanged (e.g. reloaded on task start): nothing to rebuild
         }
-        dirty = true;
+        version.incrementAndGet();
     }
 
-    public void clear() { docs.clear(); dirty = true; }
+    public void clear() { docs.clear(); version.incrementAndGet(); }
 
     public int size() { return docs.size(); }
 
     public Snapshot snapshot() {
-        if (dirty) rebuild();
+        long wanted = version.get();
+        if (builtVersion < wanted) {
+            if (built) {
+                if (buildLock.tryLock()) {                        // someone else building: use the previous snapshot
+                    try { rebuild(wanted); } finally { buildLock.unlock(); }
+                }
+            } else {
+                buildLock.lock();                                 // first build: wait rather than see an empty config
+                try { rebuild(wanted); } finally { buildLock.unlock(); }
+            }
+        }
         return snapshot;
     }
 
-    private synchronized void rebuild() {
-        if (!dirty) return;
-        dirty = false;
+    private void rebuild(long wanted) {
+        if (builtVersion >= wanted) return;          // another thread built it while this one waited
+        long v = version.get();                       // read before iterating: later applies trigger another rebuild
         Snapshot s = new Snapshot();
         for (Map.Entry<String, JsonNode> en : docs.entrySet()) {
             String key = en.getKey();
@@ -156,5 +180,7 @@ public final class Config {
         }
         s.matchSchemas.sort(Comparator.comparingInt((Schema x) -> -x.priority).thenComparing(x -> x.id));
         snapshot = s;
+        builtVersion = v;
+        built = true;
     }
 }

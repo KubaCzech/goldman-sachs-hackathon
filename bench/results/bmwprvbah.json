@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwprvbah",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 55.89,
+  "throughputPerSec" : 5368,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "drainSec" : 18.394,
+  "drainRatePerSec" : 16310,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 49070,
+    "p95" : 54777,
+    "p99" : 55259,
+    "max" : 55374,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 39203,
+    "p95" : 43071,
+    "p99" : 43535,
+    "max" : 43747,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

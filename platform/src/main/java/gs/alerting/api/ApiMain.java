@@ -428,14 +428,32 @@ public final class ApiMain {
         return r;
     }
 
+    /** Private rules are edited by their owner; team rules by a team admin. */
+    static boolean canEditRule(Caller c, ObjectNode rule) {
+        String owner = Json.text(rule, "ownerUserId");
+        return owner != null ? owner.equals(c.userId) || c.admin : c.teamAdmin(Json.text(rule, "teamId"));
+    }
+
+    static void requireEditRule(Caller c, ObjectNode rule) {
+        if (!canEditRule(c, rule)) throw new ApiError(403, Json.text(rule, "ownerUserId") != null
+                ? "This is someone else's private rule" : "Only an admin of team '" + Json.text(rule, "teamId") + "' can do this");
+    }
+
+    private static void makePrivate(ObjectNode r, String owner) {
+        r.put("ownerUserId", owner);
+        r.putArray("targets").addObject().put("type", "user").put("id", owner);
+    }
+
     private static void ruleRoutes(Javalin app) {
         app.get("/api/rules", ctx -> {
             Caller c = caller(ctx);
             ArrayNode out = Json.arr();
             for (ObjectNode r : Store.list("rule")) {
-                String team = Json.text(r, "teamId");
+                String team = Json.text(r, "teamId"), owner = Json.text(r, "ownerUserId");
                 if (!c.member(team)) continue;
-                r.put("canEdit", c.teamAdmin(team)).put("teamName", c.teamNames.getOrDefault(team, team));
+                if (owner != null && !owner.equals(c.userId) && !c.admin) continue;   // someone else's private rule
+                if (owner == null) r.putNull("ownerUserId");
+                r.put("canEdit", canEditRule(c, r)).put("teamName", c.teamNames.getOrDefault(team, team));
                 out.add(r);
             }
             json(ctx, out);
@@ -444,9 +462,13 @@ public final class ApiMain {
             Caller c = caller(ctx);
             ObjectNode b = body(ctx);
             String team = need(b, "teamId");
-            c.requireTeamAdmin(team);
+            boolean priv = b.path("private").asBoolean(false);
+            // A private rule is for the caller's own use: any team member may create one; it notifies only them and
+            // only they see its alerts. The team still decides which sources it may read. Team rules need a team admin.
+            if (priv) c.requireMember(team); else c.requireTeamAdmin(team);
             ObjectNode r = buildRule(b, null);
             r.put("id", Store.uniqueId("rule", need(b, "name"))).put("teamId", team).put("version", 1);
+            if (priv) makePrivate(r, c.userId); else r.putNull("ownerUserId");
             r.set("allowedSources", Store.allowedSources(r, Store.list("source")));
             Store.save("rule", r);
             Store.audit(c.userId, "RULE_CREATED", "rule", Json.text(r, "id"), null, null);
@@ -455,8 +477,9 @@ public final class ApiMain {
         app.put("/api/rules/{id}", ctx -> {
             Caller c = caller(ctx);
             ObjectNode existing = must("rule", ctx.pathParam("id"));
-            c.requireTeamAdmin(Json.text(existing, "teamId"));
+            requireEditRule(c, existing);
             ObjectNode r = buildRule(body(ctx), existing);
+            if (Json.text(r, "ownerUserId") != null) makePrivate(r, Json.text(r, "ownerUserId"));
             r.put("version", existing.path("version").asInt(1) + 1);
             r.set("allowedSources", Store.allowedSources(r, Store.list("source")));
             Store.save("rule", r);
@@ -466,7 +489,7 @@ public final class ApiMain {
         app.delete("/api/rules/{id}", ctx -> {
             Caller c = caller(ctx);
             ObjectNode r = must("rule", ctx.pathParam("id"));
-            c.requireTeamAdmin(Json.text(r, "teamId"));
+            requireEditRule(c, r);
             Store.delete("rule", Json.text(r, "id"));
             Store.audit(c.userId, "RULE_DELETED", "rule", Json.text(r, "id"), null, null);
             ctx.status(204);

@@ -1,0 +1,28 @@
+{
+  "runId" : "bmwppyopq",
+  "eventsSent" : 150000,
+  "eventsAccountedFor" : 150000,
+  "lost" : 0,
+  "targetRatePerSec" : 5000,
+  "durationSec" : 30.175,
+  "throughputPerSec" : 4971,
+  "alertGroups" : 401,
+  "alertUpdatesObserved" : 150000,
+  "notificationsObserved" : 402,
+  "ingestToAlertMs" : {
+    "p50" : 224,
+    "p95" : 342,
+    "p99" : 449,
+    "max" : 768,
+    "samples" : 150000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 329,
+    "p95" : 463,
+    "p99" : 487,
+    "max" : 498,
+    "samples" : 402
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

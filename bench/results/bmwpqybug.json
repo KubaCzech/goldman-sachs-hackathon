@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpqybug",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 299999,
+  "lost" : 1,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 56.015,
+  "throughputPerSec" : 5356,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "drainSec" : 16.827,
+  "drainRatePerSec" : 17828,
+  "alertUpdatesObserved" : 299999,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 49066,
+    "p95" : 54747,
+    "p99" : 55179,
+    "max" : 55519,
+    "samples" : 299999
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 40880,
+    "p95" : 42052,
+    "p99" : 42075,
+    "max" : 42179,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

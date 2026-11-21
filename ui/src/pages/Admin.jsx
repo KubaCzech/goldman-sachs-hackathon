@@ -4,6 +4,7 @@ import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { CHANNELS, CHANNEL_LABELS, asArray } from '../util.js';
 import { Empty, Field, Section } from '../components/ui.jsx';
+import { useUnsavedChanges } from '../unsaved.jsx';
 
 function TeamPolicy({ team, onSaved }) {
   const { userName } = useAuth();
@@ -19,12 +20,15 @@ function TeamPolicy({ team, onSaved }) {
       await api.put(`/api/teams/${encodeURIComponent(team.id)}/policy`, { notify, onCallUserId: onCallUserId || null });
       toast.success(`Policy saved for ${team.name || team.id}`);
       onSaved();
+      return true;
     } catch (e) {
       toast.error(e);
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  useUnsavedChanges(dirty, save);
 
   return (
     <div className="item">

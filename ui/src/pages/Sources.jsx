@@ -5,7 +5,8 @@ import { toast } from '../toast.js';
 import { SAMPLES, sampleText } from '../samples.js';
 import { asArray, flattenPaths, show, tryParseJson } from '../util.js';
 import FilterEditor, { emptyFilter, resolveFilter } from '../components/FilterEditor.jsx';
-import { CopyButton, Empty, ErrorBox, Field, Section } from '../components/ui.jsx';
+import { Combobox, CopyButton, Empty, ErrorBox, Field, Help, Section, useConfirm } from '../components/ui.jsx';
+import { useLeaveGuard, useUnsavedChanges } from '../unsaved.jsx';
 
 const sampleFor = (source) => {
   const byschema = SAMPLES.find((s) => s.id === source.defaultSchemaId);
@@ -33,6 +34,7 @@ function SourceCard({ source, schemas, reload }) {
   const id = encodeURIComponent(source.id);
   const schema = schemas.find((s) => s.id === source.defaultSchemaId);
   const curl = curlFor(source, source.token);
+  const [confirm, confirmDialog] = useConfirm();
 
   const run = async (fn, okMsg) => {
     setBusy(true);
@@ -45,6 +47,35 @@ function SourceCard({ source, schemas, reload }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const giveAccess = async () => {
+    const t = grantTeam.trim();
+    if (!t) return true;
+    setBusy(true);
+    try {
+      await api.post(`/api/sources/${id}/grants`, { teamId: t });
+      setGrantTeam('');
+      toast.success('Access granted');
+      reload();
+      return true;
+    } catch (e) {
+      toast.error(e);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  useUnsavedChanges(grantTeam.trim() !== '', giveAccess);
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: `Delete the source "${source.name || source.id}"?`,
+      body: 'Rules that read it will stop receiving its events. This cannot be undone.',
+      cancelLabel: 'Keep source',
+      confirmLabel: 'Delete source',
+    });
+    if (ok) run(() => api.del(`/api/sources/${id}`), 'Source deleted');
   };
 
   const sendTest = async () => {
@@ -69,9 +100,7 @@ function SourceCard({ source, schemas, reload }) {
           </div>
         </div>
         {canAdmin && (
-          <button type="button" className="btn small danger" disabled={busy}
-            onClick={() => window.confirm(`Delete the source "${source.name || source.id}"? Rules that read it will stop receiving its events.`) &&
-              run(() => api.del(`/api/sources/${id}`), 'Source deleted')}>
+          <button type="button" className="btn small danger" disabled={busy} onClick={remove}>
             Delete
           </button>
         )}
@@ -130,44 +159,54 @@ function SourceCard({ source, schemas, reload }) {
         </div>
         {canAdmin && (
           <div className="row">
-            <input type="text" list={`teams-${source.id}`} value={grantTeam} onChange={(e) => setGrantTeam(e.target.value)} placeholder="Team ID, e.g. rates" aria-label="Team to give access" />
-            <datalist id={`teams-${source.id}`}>
-              {teams.filter((t) => t.id !== source.teamId && !grants.includes(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </datalist>
-            <button type="button" className="btn small" disabled={busy || !grantTeam.trim()}
-              onClick={() => run(async () => { await api.post(`/api/sources/${id}/grants`, { teamId: grantTeam.trim() }); setGrantTeam(''); }, 'Access granted')}>
+            <Combobox
+              value={grantTeam}
+              onChange={setGrantTeam}
+              options={teams.filter((t) => t.id !== source.teamId && !grants.includes(t.id)).map((t) => ({ value: t.id, detail: t.name }))}
+              placeholder="Team ID, e.g. rates"
+              aria-label="Team to give access"
+            />
+            <button type="button" className="btn small" disabled={busy || !grantTeam.trim()} onClick={giveAccess}>
               Give access
             </button>
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }
 
-function CreateSource({ schemas, onDone }) {
+const EMPTY_SOURCE = { name: '', teamId: '', type: 'webhook', defaultSchemaId: '' };
+
+function CreateSource({ schemas, onDone, onCancel }) {
   const { adminTeams } = useAuth();
-  const [form, setForm] = useState({ name: '', teamId: '', type: 'webhook', defaultSchemaId: '' });
+  const [form, setForm] = useState(EMPTY_SOURCE);
   const [busy, setBusy] = useState(false);
   const teamId = form.teamId || (adminTeams[0] && adminTeams[0].id) || '';
   const set = (patch) => setForm({ ...form, ...patch });
 
-  if (adminTeams.length === 0) return <Empty>Only team admins can add sources. Switch to an admin user to add one.</Empty>;
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) return toast.error('Give the source a name.');
+  const create = async () => {
+    if (!form.name.trim()) { toast.error('Give the source a name.'); return false; }
     setBusy(true);
     try {
       await api.post('/api/sources', { name: form.name.trim(), teamId, type: form.type, defaultSchemaId: form.defaultSchemaId || null });
       toast.success('Source created');
-      setForm({ name: '', teamId: form.teamId, type: 'webhook', defaultSchemaId: '' });
+      setForm(EMPTY_SOURCE);
       onDone();
+      return true;
     } catch (err) {
       toast.error(err);
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+  const guard = useUnsavedChanges(JSON.stringify(form) !== JSON.stringify(EMPTY_SOURCE), create);
+
+  const submit = (e) => {
+    e.preventDefault();
+    create();
   };
 
   return (
@@ -191,6 +230,7 @@ function CreateSource({ schemas, onDone }) {
         </select>
       </Field>
       <button type="submit" className="btn primary align-end" disabled={busy}>Create source</button>
+      <button type="button" className="btn align-end" onClick={() => guard(onCancel)}>Cancel</button>
     </form>
   );
 }
@@ -202,7 +242,7 @@ const ROLES = [
   ['service', 'Service', 'Which system produced it'],
 ];
 
-function SchemaFromSample({ onDone }) {
+function SchemaFromSample({ onDone, onCancel }) {
   const { adminTeams } = useAuth();
   const [text, setText] = useState('');
   const [inferred, setInferred] = useState(null);
@@ -217,8 +257,6 @@ function SchemaFromSample({ onDone }) {
   const [useMatch, setUseMatch] = useState(false);
   const [match, setMatch] = useState(emptyFilter());
   const teamId = teamIdRaw || (adminTeams[0] && adminTeams[0].id) || '';
-
-  if (adminTeams.length === 0) return <Empty>Only team admins can add schemas.</Empty>;
 
   const infer = async () => {
     setError(null);
@@ -247,7 +285,8 @@ function SchemaFromSample({ onDone }) {
   };
 
   const save = async () => {
-    if (!name.trim()) return toast.error('Give the schema a name.');
+    if (!inferred) { toast.error('Detect the fields of the sample first.'); return false; }
+    if (!name.trim()) { toast.error('Give the schema a name.'); return false; }
     setBusy(true);
     try {
       const mapping = {};
@@ -266,12 +305,15 @@ function SchemaFromSample({ onDone }) {
       toast.success('Schema saved');
       setText(''); setInferred(null); setName(''); setUseMatch(false); setMatch(emptyFilter());
       onDone();
+      return true;
     } catch (e) {
       toast.error(e);
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  const guard = useUnsavedChanges(text.trim() !== '' || name.trim() !== '', save);
 
   return (
     <div>
@@ -285,7 +327,10 @@ function SchemaFromSample({ onDone }) {
         <textarea className="mono" rows={8} value={text} onChange={(e) => { setText(e.target.value); setInferred(null); }} placeholder='{"type": "...", "severity": "..."}' spellCheck={false} />
       </Field>
       <ErrorBox>{error}</ErrorBox>
-      <button type="button" className="btn primary" onClick={infer} disabled={busy || !text.trim()}>{busy && !inferred ? 'Reading…' : 'Detect fields'}</button>
+      <div className="row">
+        <button type="button" className="btn primary" onClick={infer} disabled={busy || !text.trim()}>{busy && !inferred ? 'Reading…' : 'Detect fields'}</button>
+        <button type="button" className="btn" onClick={() => guard(onCancel)}>Cancel</button>
+      </div>
 
       {inferred && (
         <div className="infer-result">
@@ -301,8 +346,7 @@ function SchemaFromSample({ onDone }) {
             </div>
           )}
 
-          <h3>Which field means what?</h3>
-          <p className="muted">We have pre-selected our best guess. Leave "Detect automatically" if you are unsure.</p>
+          <h3>Which field means what?<Help text={'We have pre-selected our best guess. Leave "Detect automatically" if you are unsure.'} /></h3>
           <div className="row wrap">
             {ROLES.map(([role, label, hint]) => (
               <Field key={role} label={label} hint={hint}>
@@ -363,11 +407,17 @@ function mappingSummary(mapping) {
   return parts.length ? parts.join(' · ') : 'Detected automatically';
 }
 
+const SUBTABS = [['schemas', 'Schemas'], ['sources', 'Sources']];
+
 export default function Sources() {
-  const { teamName, isAdminOf } = useAuth();
+  const { teamName, isAdminOf, adminTeams } = useAuth();
+  const guard = useLeaveGuard();
+  const [tab, setTab] = useState('schemas');
+  const [adding, setAdding] = useState(false);
   const [sources, setSources] = useState(null);
   const [schemas, setSchemas] = useState(null);
   const [error, setError] = useState(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(() => {
     api.get('/api/sources').then((s) => { setSources(asArray(s)); setError(null); }).catch((e) => { setSources([]); setError(e.message); });
@@ -375,8 +425,19 @@ export default function Sources() {
   }, []);
   useEffect(load, [load]);
 
+  const switchTab = (next) => {
+    if (next === tab) return;
+    guard(() => { setTab(next); setAdding(false); });
+  };
+
   const deleteSchema = async (s) => {
-    if (!window.confirm(`Delete the schema "${s.name || s.id}"?`)) return;
+    const ok = await confirm({
+      title: `Delete the schema "${s.name || s.id}"?`,
+      body: 'Events that used it will have their severity, time, type and service guessed instead. This cannot be undone.',
+      cancelLabel: 'Keep schema',
+      confirmLabel: 'Delete schema',
+    });
+    if (!ok) return;
     try {
       await api.del(`/api/schemas/${encodeURIComponent(s.id)}`);
       toast.success('Schema deleted');
@@ -387,51 +448,79 @@ export default function Sources() {
   };
 
   const schemaList = schemas || [];
+  const isAdmin = adminTeams.length > 0;
+  const addLabel = tab === 'sources' ? 'Add source' : 'Add schema';
 
   return (
     <div>
       <div className="page-head"><h1>Sources and schemas</h1></div>
+      <div className="tabs subtabs" role="tablist">
+        {SUBTABS.map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => switchTab(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
       <ErrorBox>{error}</ErrorBox>
 
-      <Section title="Sources" hint="A source is a place events come from: a webhook you POST to, or a Kafka topic.">
-        {sources === null ? <Empty>Loading sources…</Empty> : sources.length === 0 ? (
-          <Empty title="No sources yet">Create one below, then send it an event.</Empty>
+      <div className="row">
+        {isAdmin ? (
+          !adding && <button type="button" className="btn primary" onClick={() => setAdding(true)}>{addLabel}</button>
         ) : (
-          sources.map((s) => <SourceCard key={s.id} source={s} schemas={schemaList} reload={load} />)
+          <span className="muted">Only team admins can add {tab === 'sources' ? 'sources' : 'schemas'}.</span>
         )}
-        <h3>Add a source</h3>
-        <CreateSource schemas={schemaList} onDone={load} />
-      </Section>
+      </div>
 
-      <Section title="Schemas" hint="A schema tells the service where to find severity, time, type and service in your events. Events with no schema still work: these are then guessed.">
-        {schemas === null ? <Empty>Loading schemas…</Empty> : schemas.length === 0 ? (
-          <Empty title="No schemas yet">Paste a sample event below to create one.</Empty>
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Name</th><th>Team</th><th>Field mapping</th><th>Fields</th><th>Recognised by</th><th /></tr></thead>
-              <tbody>
-                {schemas.map((s) => (
-                  <tr key={s.id}>
-                    <td><strong>{s.name || s.id}</strong><div className="muted"><code>{s.id}</code></div></td>
-                    <td>{teamName(s.teamId) || '—'}</td>
-                    <td>{mappingSummary(s.mapping)}</td>
-                    <td>{asArray(s.fields).length}</td>
-                    <td>{s.match ? `Condition (priority ${s.priority != null ? s.priority : 0})` : 'Source default only'}</td>
-                    <td className="right">
-                      {isAdminOf(s.teamId) && <button type="button" className="btn small danger" onClick={() => deleteSchema(s)}>Delete</button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-
-      <Section title="Add schema from a sample" hint="Paste one example event. We work out its fields; you confirm which is which.">
-        <SchemaFromSample onDone={load} />
-      </Section>
+      {tab === 'sources' ? (
+        <>
+          {adding && (
+            <Section title="Add a source">
+              <CreateSource schemas={schemaList} onDone={() => { setAdding(false); load(); }} onCancel={() => setAdding(false)} />
+            </Section>
+          )}
+          <Section title="Sources" hint="A source is a place events come from: a webhook you POST to, or a Kafka topic.">
+            {sources === null ? <Empty>Loading sources…</Empty> : sources.length === 0 ? (
+              <Empty title="No sources yet">Add one, then send it an event.</Empty>
+            ) : (
+              sources.map((s) => <SourceCard key={s.id} source={s} schemas={schemaList} reload={load} />)
+            )}
+          </Section>
+        </>
+      ) : (
+        <>
+          {adding && (
+            <Section title="Add a schema from a sample" hint="Paste one example event. We work out its fields; you confirm which is which.">
+              <SchemaFromSample onDone={() => { setAdding(false); load(); }} onCancel={() => setAdding(false)} />
+            </Section>
+          )}
+          <Section title="Schemas" hint="A schema tells the service where to find severity, time, type and service in your events. Events with no schema still work: these are then guessed.">
+            {schemas === null ? <Empty>Loading schemas…</Empty> : schemas.length === 0 ? (
+              <Empty title="No schemas yet">Add one from a sample event.</Empty>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead><tr><th>Name</th><th>Team</th><th>Field mapping</th><th>Fields</th><th>Recognised by</th><th /></tr></thead>
+                  <tbody>
+                    {schemas.map((s) => (
+                      <tr key={s.id}>
+                        <td><strong>{s.name || s.id}</strong><div className="muted"><code>{s.id}</code></div></td>
+                        <td>{teamName(s.teamId) || '—'}</td>
+                        <td>{mappingSummary(s.mapping)}</td>
+                        <td>{asArray(s.fields).length}</td>
+                        <td>{s.match ? `Condition (priority ${s.priority != null ? s.priority : 0})` : 'Source default only'}</td>
+                        <td className="right">
+                          {isAdminOf(s.teamId) && <button type="button" className="btn small danger" onClick={() => deleteSchema(s)}>Delete</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+        </>
+      )}
+      {confirmDialog}
     </div>
   );
 }

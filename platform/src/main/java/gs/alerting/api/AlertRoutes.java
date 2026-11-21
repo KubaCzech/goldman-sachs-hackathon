@@ -49,7 +49,9 @@ public final class AlertRoutes {
     /** Load an alert and check the caller belongs to its team. */
     static ObjectNode alertFor(Context ctx) {
         ObjectNode a = alert(ctx.pathParam("id"));
-        ApiMain.caller(ctx).requireMember(Json.text(a, "teamId"));
+        Caller c = ApiMain.caller(ctx);
+        c.requireMember(Json.text(a, "teamId"));
+        if (!c.canSee(a)) throw new ApiError(404, "No alert with id '" + Json.text(a, "alertId") + "'");
         return a;
     }
 
@@ -75,6 +77,7 @@ public final class AlertRoutes {
             List<Object> params = new ArrayList<>(teams);
             StringBuilder sql = new StringBuilder("SELECT doc FROM alerts WHERE team_id IN (")
                     .append(teams.stream().map(t -> "?").collect(Collectors.joining(","))).append(")");
+            if (!c.admin) { sql.append(" AND (doc->>'ownerUserId' IS NULL OR doc->>'ownerUserId' = ?)"); params.add(c.userId); }
             String status = ctx.queryParam("status");
             if (status != null && !status.isBlank() && !status.equalsIgnoreCase("all")) {
                 if (status.equalsIgnoreCase("active")) sql.append(" AND status <> 'RESOLVED'");
@@ -185,7 +188,7 @@ public final class AlertRoutes {
                         for (ObjectNode a : coalesce(recs).values()) {
                             String team = Json.text(a, "teamId"), data = Json.str(a);
                             for (Map.Entry<SseClient, Caller> en : clients.entrySet()) {
-                                if (!en.getValue().member(team)) continue;
+                                if (!en.getValue().canSee(a)) continue;
                                 String only = clientTeam.get(en.getKey());
                                 if (only != null && !only.equals(team)) continue;
                                 try { en.getKey().sendEvent("alert", data); } catch (Exception ex) { clients.remove(en.getKey()); }

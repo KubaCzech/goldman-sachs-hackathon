@@ -35,7 +35,7 @@ Log in as **anna** to see it. Log in as **ravi** (another team) to see that he c
 |---|---|---|
 | `admin` | platform admin | channel failure injection, everything visible |
 | `sam` | Settlements admin, on-call | approving risky runbook steps |
-| `sara` | Settlements member | running safe steps, being refused approval and rule edits |
+| `sara` | Settlements member | running safe steps, being refused approval and team-rule edits, creating a private rule (Rules → My rules) |
 | `petra` | Pricing admin | free-text runbook found by search |
 | `ravi` | Rates admin | emails in the mock mailbox, granting a source to another team |
 | `anna` | Payments admin | personal rule with quiet hours 20:00–08:00 (falls back to email) |
@@ -47,34 +47,80 @@ The four example rules and three runbooks from the brief's appendices are loaded
 ## Tests
 
 ```bash
-cd platform && mvn test          # 19 unit and topology tests (no Docker needed)
-python3 scripts/smoke.py         # 57 end-to-end checks against the running stack
+cd platform && mvn test          # 22 unit and topology tests (no Docker needed)
+python3 scripts/smoke.py         # 66 end-to-end checks against the running stack
 ```
 
 The smoke test covers: ingest and token check, de-duplication into one alert with a counter, one notification for
 61 events, team isolation, acknowledge / auto-resolve / manual resolve, history filters (nested values, ranges,
 `IN`, `OR`, injection attempt), email in the mock mailbox, channel failure with retry and no duplicate, rules
-created at runtime, source grants and revocation, an event with a schema never seen before, and runbook
+created at runtime, private rules (visible and notified to their owner only), source grants and revocation, an event with a schema never seen before, and runbook
 matching, placeholder filling, actions, approval and audit.
 
 ## Benchmark
 
+Everything below was measured on one laptop (11 CPUs and 8 GB given to Docker) running the whole system: 3 brokers
+(replication factor 3), Postgres, API, dispatcher, the load generator and the processors. Events are the three sample
+schemas; every event matches a rule. Every run is checked twice: the benchmark's own tally and, independently, the sum
+of alert counters in Postgres must both equal the events sent. **No run lost an event.** Raw results: `bench/results/`.
+
 ```bash
-BENCH_EVENTS=150000 BENCH_RATE=5000 docker compose --profile bench run --rm bench
+python3 scripts/bench_scaling.py --burst --configs 2x0x3          # default deployment: capacity + latency
+python3 scripts/bench_scaling.py --burst --cpuset                 # processor scaling on dedicated cores
+python3 scripts/bench_scaling.py --burst --broker-cores 1,2,3,4,6 # one broker on 1..6 cores (separate stack)
+scripts/kafka_baseline.sh                                         # raw Kafka on this machine, for comparison
 ```
 
-Measured on one laptop (11 CPUs, 8 GB given to Docker) running everything: 3 brokers with replication factor 3,
-2 processor instances, exactly-once enabled, commit interval 100 ms. Events are a mix of the three sample schemas;
-every event matches a rule. Raw results are in `bench/results/`.
+**Latency at 1,500 events/s** (default deployment, exactly-once, commit interval 100 ms):
 
-| Run | Events | Lost | Throughput | Ingest → alert p50 / p95 / p99 | Ingest → notification p50 / p95 / p99 |
+| Ingest → alert p50 / p95 / p99 | Ingest → delivered email p50 / p99 |
+|---|---|
+| 222 / 318 / 366 ms | 411 / 610 ms |
+
+"Delivered" is the moment the email is accepted by the mail server (Mailpit), as stored per delivery. It includes 400
+alerts created within about half a second at the start of the run, all emailed at once.
+
+**Capacity** is measured by sending a backlog much faster than it can be processed (150,000–760,000 events/s) into
+running processors and timing the output. The default deployment (2 processors × 3 threads, nothing pinned)
+processed **36,000–56,000 events/s** across four runs; the spread comes from sharing cores with the brokers.
+
+**Processor scaling** (processors on dedicated cores; brokers and everything else share the other 5 cores):
+
+| Processor cores | 1 | 2 | 3 | 4 | 6 |
 |---|---|---|---|---|---|
-| 5,000 events/s (below saturation) | 150,000 | 0 | 4,950/s | 243 / 387 / 474 ms | 419 / 470 / 481 ms |
-| 20,000 events/s offered (saturated) | 200,000 | 0 | 12,083/s | queueing: 5,987 / 10,600 / 12,534 ms | 1,666 / 2,908 / 3,963 ms |
+| Events/s, keys spread evenly | 19,865 | 35,859 | 45,872 | 53,581 | 58,286 |
+| Speed-up | 1.0× | 1.8× | 2.3× | 2.7× | 2.9× |
 
-Latency below saturation is dominated by the two exactly-once commits an event passes through (2 × 100 ms).
-`COMMIT_INTERVAL_MS` trades latency against throughput. "Notification" latency is to the record being readable on
-the `notifications` topic; the dispatcher's own delivery latency is stored per delivery and shown in the UI.
+Processing is CPU-bound and scales with cores until the 5 shared cores (3 brokers, load generator, Postgres) are full.
+With separate broker machines the processor tier has more room.
+
+**Broker scaling** (one broker, replication factor 1, on dedicated cores; processors fixed):
+
+| Broker cores | 1 | 2 | 3 | 4 | 6 |
+|---|---|---|---|---|---|
+| Pipeline events/s | 59,020 | 108,050 | 118,227 | 120,992 | 115,407 |
+| Raw Kafka produce events/s | 816,000 | 1,808,000 | – | 2,188,000 | 2,208,000 |
+| Raw produce p99 | 600 ms | 33 ms | – | 7 ms | 7 ms |
+
+A one-core broker is busy only 90% of the time but answers slowly (p99 600 ms), and exactly-once commits wait for it;
+a second core halves that wait and doubles the pipeline. Raw Kafka on the 3-broker stack does about 1.59 million
+events/s, so the pipeline's per-event work (parse, match, update alert state, three writes) sets its limit, not Kafka.
+
+**One hot alert caps throughput.** The seeded settlement rule groups every failure of one workflow into one alert, so a
+third of the original mix lands on one partition and one thread. In the single-broker test, keys spread evenly reach
+about 120,000 events/s, while the original mix stays near 58,000 events/s whatever the broker's core count. The fix is in the
+rule (group by something finer), not in hardware.
+
+**Exactly-once costs latency, not throughput** (default deployment, same day):
+
+| Setting | Events/s (spread / original mix) | Ingest → alert p50 / p99 |
+|---|---|---|
+| Exactly-once, commit 100 ms (default) | 55,939 / 51,738 | 215 / 397 ms |
+| At-least-once | 51,507 / 42,833 | 18 / 73 ms |
+| Exactly-once, commit 1,000 ms | 60,411 / 43,901 | 1,676 / 2,068 ms |
+
+Exactly-once makes each event wait for a commit at both stages (about 200 ms). It is kept because it guarantees an
+alert's counter and notification decision are not repeated after a crash.
 
 ## How it works
 

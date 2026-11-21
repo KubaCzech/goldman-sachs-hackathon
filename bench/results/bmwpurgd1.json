@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpurgd1",
+  "mix" : "all",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 11.897,
+  "throughputPerSec" : 50433,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 1350,
+  "produceRatePerSec" : 444444,
+  "drainSec" : 10.343,
+  "drainRatePerSec" : 58010,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 3454,
+    "p95" : 9234,
+    "p99" : 10111,
+    "max" : 10586,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 1298,
+    "p95" : 1321,
+    "p99" : 1322,
+    "max" : 1333,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

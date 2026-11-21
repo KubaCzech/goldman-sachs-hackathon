@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpr24t7",
+  "mix" : "spread",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 52.4,
+  "throughputPerSec" : 5725,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "drainSec" : 14.546,
+  "drainRatePerSec" : 20624,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 47491,
+    "p95" : 51004,
+    "p99" : 51799,
+    "max" : 51994,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 38969,
+    "p95" : 42227,
+    "p99" : 43016,
+    "max" : 43025,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

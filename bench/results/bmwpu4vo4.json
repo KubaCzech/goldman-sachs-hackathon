@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpu4vo4",
+  "mix" : "all",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 13.619,
+  "throughputPerSec" : 44056,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 2000,
+  "produceRatePerSec" : 300000,
+  "drainSec" : 11.597,
+  "drainRatePerSec" : 51738,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 4615,
+    "p95" : 10828,
+    "p99" : 11697,
+    "max" : 12395,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 1933,
+    "p95" : 1963,
+    "p99" : 1964,
+    "max" : 1980,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

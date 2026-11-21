@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwput2qu",
+  "mix" : "spread",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 6.294,
+  "throughputPerSec" : 95329,
+  "alertGroups" : 400,
+  "drainMode" : true,
+  "producedMs" : 951,
+  "produceRatePerSec" : 630915,
+  "drainSec" : 5.199,
+  "drainRatePerSec" : 115407,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 3397,
+    "p95" : 5245,
+    "p99" : 5398,
+    "max" : 5538,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 916,
+    "p95" : 924,
+    "p99" : 925,
+    "max" : 948,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

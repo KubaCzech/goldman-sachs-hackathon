@@ -40,6 +40,11 @@ public final class Auth {
 
         public void requireMember(String teamId) { if (!member(teamId)) deny("You are not a member of team '" + teamId + "'"); }
         public void requireTeamAdmin(String teamId) { if (!teamAdmin(teamId)) deny("Only an admin of team '" + teamId + "' can do this"); }
+        /** Alerts of a private rule are visible to its owner only (and platform admins). */
+        public boolean canSee(com.fasterxml.jackson.databind.JsonNode alert) {
+            String owner = alert.path("ownerUserId").asText(null);
+            return member(alert.path("teamId").asText(null)) && (owner == null || owner.isEmpty() || admin || owner.equals(userId));
+        }
         public void requirePlatformAdmin() { if (!admin) deny("Only a platform admin can do this"); }
 
         private void deny(String msg) {

@@ -20,10 +20,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -123,20 +130,48 @@ public final class DispatcherMain {
         return down.getOrDefault(channel, false);
     }
 
+    /**
+     * Sends a polled batch concurrently: records are grouped by key (the recipient) and each group is sent in order, so
+     * one person's notifications never overtake each other while different people's are sent in parallel. Offsets are
+     * committed only after the whole batch is done (at-least-once; the idempotency key prevents a second send).
+     */
     private static void loop(String topic, Map<String, ChannelAdapter> adapters) {
+        ExecutorService workers = Executors.newFixedThreadPool(Env.getInt("DISPATCH_CONCURRENCY", 8), r -> {
+            Thread t = new Thread(r, "dispatch-worker-" + topic);
+            t.setDaemon(true);
+            return t;
+        });
         while (true) {
             try (KafkaConsumer<String, String> c = new KafkaConsumer<>(Env.consumer("dispatcher", true))) {
                 c.subscribe(List.of(topic));
                 while (true) {
                     ConsumerRecords<String, String> recs = c.poll(Duration.ofMillis(200));
-                    for (ConsumerRecord<String, String> r : recs) handle(r, adapters);
-                    if (!recs.isEmpty()) { producer.flush(); c.commitSync(); }
+                    if (recs.isEmpty()) continue;
+                    Map<String, List<ConsumerRecord<String, String>>> byRecipient = new LinkedHashMap<>();
+                    Set<String> seen = new HashSet<>();
+                    for (ConsumerRecord<String, String> r : recs) {
+                        String id = notificationId(r.value());
+                        if (id != null && !seen.add(id)) { DUPLICATES.incrementAndGet(); continue; }   // same notification twice in one batch
+                        byRecipient.computeIfAbsent(String.valueOf(r.key()), k -> new ArrayList<>()).add(r);
+                    }
+                    List<Future<?>> done = new ArrayList<>();
+                    for (List<ConsumerRecord<String, String>> group : byRecipient.values())
+                        done.add(workers.submit(() -> { for (ConsumerRecord<String, String> r : group) handle(r, adapters); return null; }));
+                    for (Future<?> f : done) {
+                        try { f.get(); } catch (ExecutionException e) { throw new RuntimeException(e.getCause()); }
+                    }
+                    producer.flush();
+                    c.commitSync();
                 }
             } catch (Exception e) {
                 log.error("Dispatcher loop on {} failed; restarting", topic, e);
                 try { Thread.sleep(2000); } catch (InterruptedException ie) { return; }
             }
         }
+    }
+
+    private static String notificationId(String value) {
+        try { return Json.text(Json.M.readTree(value), "notificationId"); } catch (Exception e) { return null; }
     }
 
     private static void handle(ConsumerRecord<String, String> rec, Map<String, ChannelAdapter> adapters) throws Exception {

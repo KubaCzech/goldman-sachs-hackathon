@@ -1,0 +1,32 @@
+{
+  "runId" : "bmwpsw8i0",
+  "mix" : "spread",
+  "eventsSent" : 45000,
+  "eventsAccountedFor" : 45000,
+  "lost" : 0,
+  "targetRatePerSec" : 1500,
+  "durationSec" : 30.255,
+  "throughputPerSec" : 1487,
+  "alertGroups" : 400,
+  "drainMode" : false,
+  "drainSec" : 30.089,
+  "drainRatePerSec" : 1496,
+  "alertUpdatesObserved" : 45000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 212,
+    "p95" : 314,
+    "p99" : 351,
+    "max" : 414,
+    "samples" : 45000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 245,
+    "p95" : 324,
+    "p99" : 334,
+    "max" : 366,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

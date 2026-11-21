@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpueuew",
+  "mix" : "all",
+  "eventsSent" : 600000,
+  "eventsAccountedFor" : 600000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 16.364,
+  "throughputPerSec" : 36666,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 2169,
+  "produceRatePerSec" : 276625,
+  "drainSec" : 13.667,
+  "drainRatePerSec" : 43901,
+  "alertUpdatesObserved" : 600000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 6260,
+    "p95" : 13372,
+    "p99" : 14212,
+    "max" : 14472,
+    "samples" : 600000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 3267,
+    "p95" : 4080,
+    "p99" : 4085,
+    "max" : 4086,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 1000,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

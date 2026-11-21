@@ -4,14 +4,18 @@ import { api, qs } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
 import { useAlertStream } from '../useAlertStream.js';
-import { alertColor, asArray, fmtAgo, fmtTime, sortAlerts } from '../util.js';
+import { alertColor, asArray, fmtAgo, fmtTime, mergeFields, sortAlerts } from '../util.js';
 import FilterEditor, { emptyFilter, filterFromSql, resolveFilter } from '../components/FilterEditor.jsx';
-import { Empty, ErrorBox, Field, Modal, SeverityBadge, StatusBadge } from '../components/ui.jsx';
+import { Empty, ErrorBox, Field, Help, Modal, SeverityBadge, StatusBadge, useConfirm } from '../components/ui.jsx';
+import { useUnsavedChanges } from '../unsaved.jsx';
 
 const MAX_ROWS = 300;
 
 export default function Feed() {
-  const { teams, teamName, me } = useAuth();
+  const { teamName, me } = useAuth();
+  // Only teams the user belongs to (/api/teams also lists other teams, by name only).
+  const myTeams = asArray(me.teams).map((t) => ({ id: t.teamId, name: t.teamName }));
+  const [confirm, confirmDialog] = useConfirm();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,7 +51,7 @@ export default function Feed() {
   }, []);
 
   useEffect(() => {
-    api.get('/api/fields').then((f) => setFields(asArray(f))).catch(() => setFields([]));
+    api.get('/api/fields').then((f) => setFields(mergeFields(f))).catch(() => setFields([]));
     loadSaved();
     const t = setInterval(() => tick((n) => n + 1), 30000); // refresh "x ago" labels
     return () => clearInterval(t);
@@ -83,6 +87,8 @@ export default function Feed() {
     }
   }, []);
   const connected = useAlertStream(teamId, onAlert);
+  const [everConnected, setEverConnected] = useState(false);
+  useEffect(() => { if (connected) setEverConnected(true); }, [connected]);
 
   const apply = async (value = filter) => {
     setApplying(true);
@@ -120,15 +126,16 @@ export default function Feed() {
     try {
       const { sql, empty } = await resolveFilter(filter, fields, { needSql: true });
       if (empty) return toast.info('Add at least one condition before saving a filter.');
-      setSaveForm({ name: '', scope: 'personal', teamId: teamId || (me.teams[0] && me.teams[0].teamId) || (teams[0] && teams[0].id) || '', sql });
+      setSaveForm({ name: '', scope: 'personal', teamId: teamId || (myTeams[0] && myTeams[0].id) || '', sql });
     } catch (e) {
       toast.error(e);
     }
   };
 
   const save = async () => {
-    if (!saveForm.name.trim()) return toast.error('Give the filter a name.');
-    if (saveForm.scope === 'team' && !saveForm.teamId) return toast.error('Choose a team to share the filter with.');
+    if (!saveForm) return true;
+    if (!saveForm.name.trim()) { toast.error('Give the filter a name.'); return false; }
+    if (saveForm.scope === 'team' && !saveForm.teamId) { toast.error('Choose a team to share the filter with.'); return false; }
     try {
       const body = { name: saveForm.name.trim(), scope: saveForm.scope, sql: saveForm.sql };
       if (saveForm.scope === 'team') body.teamId = saveForm.teamId;
@@ -137,14 +144,17 @@ export default function Feed() {
       setSaveForm(null);
       loadSaved();
       if (created && created.id) setSavedId(String(created.id));
+      return true;
     } catch (e) {
       toast.error(e);
+      return false;
     }
   };
+  const guard = useUnsavedChanges(!!saveForm && saveForm.name.trim() !== '', save);
 
   const deleteSaved = async () => {
     const f = saved.find((x) => String(x.id) === String(savedId));
-    if (!f || !window.confirm(`Delete the saved filter "${f.name}"?`)) return;
+    if (!f || !(await confirm({ title: `Delete the saved filter "${f.name}"?`, body: 'It is removed for everyone who can use it.', confirmLabel: 'Delete filter' }))) return;
     try {
       await api.del(`/api/saved-filters/${encodeURIComponent(f.id)}`);
       toast.success('Saved filter deleted');
@@ -169,17 +179,16 @@ export default function Feed() {
     <div>
       <div className="page-head">
         <h1>Alerts</h1>
-        <span className={`live ${connected ? 'on' : 'off'}`} title={connected ? 'Receiving live updates' : 'Live updates are disconnected; retrying'}>
-          <span className="live-dot" /> {connected ? 'Live' : 'Reconnecting…'}
-        </span>
+        {everConnected && !connected && <span className="muted">Live updates disconnected. Reconnecting…</span>}
       </div>
 
-      <div className="card">
-        <div className="row wrap">
+      <div className="feed-layout">
+        <aside className="card feed-filters">
+          <h2>Filters</h2>
           <Field label="Team">
             <select value={teamId} onChange={(e) => { setLoading(true); setTeamId(e.target.value); }}>
               <option value="">All my teams</option>
-              {teams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
+              {myTeams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
             </select>
           </Field>
           <Field label="Status">
@@ -200,66 +209,68 @@ export default function Feed() {
               ))}
             </select>
           </Field>
-          {savedId && <button type="button" className="btn small ghost align-end" onClick={deleteSaved}>Delete saved filter</button>}
-        </div>
+          {savedId && <button type="button" className="btn small ghost" onClick={deleteSaved}>Delete saved filter</button>}
 
-        <div className="filter-panel">
-          <div className="field-label">Filter</div>
-          <FilterEditor value={filter} onChange={setFilter} fields={fields} emptyText="No conditions. All alerts are shown. Add a condition to narrow the list." />
-          <div className="row">
-            <button type="button" className="btn primary" onClick={() => apply()} disabled={applying}>{applying ? 'Applying…' : 'Apply filter'}</button>
-            <button type="button" className="btn" onClick={clear}>Clear</button>
-            <button type="button" className="btn" onClick={openSave}>Save current filter</button>
-            {appliedSql && <span className="muted applied">Active filter: <code>{appliedSql}</code></span>}
+          <div className="filter-panel">
+            <div className="field-label">Conditions<Help text="Only alerts matching every condition are shown. Apply the filter to update the list." /></div>
+            <FilterEditor value={filter} onChange={setFilter} fields={fields} emptyText="No conditions. All alerts are shown." />
+            <div className="row">
+              <button type="button" className="btn primary" onClick={() => apply()} disabled={applying}>{applying ? 'Applying…' : 'Apply'}</button>
+              <button type="button" className="btn" onClick={clear}>Clear</button>
+              <button type="button" className="btn" onClick={openSave}>Save…</button>
+            </div>
+            {appliedSql && <div className="muted applied">Active filter: <code>{appliedSql}</code></div>}
           </div>
+        </aside>
+
+        <div className="feed-main">
+          <ErrorBox>{error}</ErrorBox>
+
+          {loading && alerts.length === 0 ? (
+            <Empty>Loading alerts…</Empty>
+          ) : alerts.length === 0 ? (
+            <Empty title="No alerts to show">
+              {appliedSql || status || teamId
+                ? 'Nothing matches the current team, status and filter. Try clearing the filter.'
+                : 'When a rule matches an incoming event, the alert appears here straight away.'}
+            </Empty>
+          ) : (
+            <div className="alert-list">
+              {alerts.map((a) => (
+                <div className={`alert-row status-${String(a.status || '').toLowerCase()}`} key={a.alertId}>
+                  <div className="sevbar" style={{ background: alertColor(a) }} />
+                  <div className="alert-main">
+                    <div className="alert-title">
+                      <Link to={`/alerts/${encodeURIComponent(a.alertId)}`}>{a.title || a.type || a.alertId}</Link>
+                      {a.count > 1 && <span className="badge count" title={`${a.count} matching events`}>×{a.count}</span>}
+                    </div>
+                    <div className="alert-meta">
+                      <SeverityBadge severity={a.severity} />
+                      <StatusBadge status={a.status} />
+                      <span>Team: <strong>{teamName(a.teamId) || '—'}</strong></span>
+                      <span>Rule: <strong>{a.ruleName || a.ruleId || '—'}</strong></span>
+                      <span title={fmtTime(a.firstSeen)}>First seen {fmtAgo(a.firstSeen)}</span>
+                      <span title={fmtTime(a.lastSeen)}>Last seen {fmtAgo(a.lastSeen)}</span>
+                    </div>
+                  </div>
+                  <div className="alert-actions">
+                    {a.status === 'OPEN' && <button type="button" className="btn small" onClick={() => act(a, 'ack')}>Ack</button>}
+                    {a.status !== 'RESOLVED' && <button type="button" className="btn small" onClick={() => act(a, 'resolve')}>Resolve</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      <ErrorBox>{error}</ErrorBox>
-
-      {loading && alerts.length === 0 ? (
-        <Empty>Loading alerts…</Empty>
-      ) : alerts.length === 0 ? (
-        <Empty title="No alerts to show">
-          {appliedSql || status || teamId
-            ? 'Nothing matches the current team, status and filter. Try clearing the filter.'
-            : 'When a rule matches an incoming event, the alert appears here straight away.'}
-        </Empty>
-      ) : (
-        <div className="alert-list">
-          {alerts.map((a) => (
-            <div className={`alert-row status-${String(a.status || '').toLowerCase()}`} key={a.alertId}>
-              <div className="sevbar" style={{ background: alertColor(a) }} />
-              <div className="alert-main">
-                <div className="alert-title">
-                  <Link to={`/alerts/${encodeURIComponent(a.alertId)}`}>{a.title || a.type || a.alertId}</Link>
-                  {a.count > 1 && <span className="badge count" title={`${a.count} matching events`}>×{a.count}</span>}
-                </div>
-                <div className="alert-meta">
-                  <SeverityBadge severity={a.severity} />
-                  <StatusBadge status={a.status} />
-                  <span>Team: <strong>{teamName(a.teamId) || '—'}</strong></span>
-                  <span>Rule: <strong>{a.ruleName || a.ruleId || '—'}</strong></span>
-                  <span title={fmtTime(a.firstSeen)}>First seen {fmtAgo(a.firstSeen)}</span>
-                  <span title={fmtTime(a.lastSeen)}>Last seen {fmtAgo(a.lastSeen)}</span>
-                </div>
-              </div>
-              <div className="alert-actions">
-                {a.status === 'OPEN' && <button type="button" className="btn small" onClick={() => act(a, 'ack')}>Ack</button>}
-                {a.status !== 'RESOLVED' && <button type="button" className="btn small" onClick={() => act(a, 'resolve')}>Resolve</button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {saveForm && (
         <Modal
           title="Save current filter"
-          onClose={() => setSaveForm(null)}
+          onClose={() => guard(() => setSaveForm(null))}
           actions={
             <>
-              <button type="button" className="btn" onClick={() => setSaveForm(null)}>Cancel</button>
+              <button type="button" className="btn" onClick={() => guard(() => setSaveForm(null))}>Cancel</button>
               <button type="button" className="btn primary" onClick={save}>Save filter</button>
             </>
           }
@@ -277,13 +288,14 @@ export default function Feed() {
             <Field label="Team">
               <select value={saveForm.teamId} onChange={(e) => setSaveForm({ ...saveForm, teamId: e.target.value })}>
                 <option value="">Choose a team…</option>
-                {teams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
+                {myTeams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
               </select>
             </Field>
           )}
           <div className="hint">Filter: <code>{saveForm.sql}</code></div>
         </Modal>
       )}
+      {confirmDialog}
     </div>
   );
 }

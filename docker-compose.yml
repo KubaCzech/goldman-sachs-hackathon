@@ -104,8 +104,9 @@ services:
     environment:
       <<: *platform-env
       ROLE: processor
-      STREAM_THREADS: 3
-      COMMIT_INTERVAL_MS: 100
+      STREAM_THREADS: ${STREAM_THREADS:-3}
+      COMMIT_INTERVAL_MS: ${COMMIT_INTERVAL_MS:-100}
+      PROCESSING_GUARANTEE: ${PROCESSING_GUARANTEE:-exactly_once_v2}
     deploy:
       replicas: 2
     depends_on:
@@ -123,6 +124,8 @@ services:
       ROLE: dispatcher
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
+      DISPATCH_CONCURRENCY: ${DISPATCH_CONCURRENCY:-8}
+      DB_POOL: 20
     depends_on:
       api: {condition: service_healthy}
     healthcheck:
@@ -147,6 +150,10 @@ services:
       BENCH_EVENTS: ${BENCH_EVENTS:-200000}
       BENCH_RATE: ${BENCH_RATE:-20000}
       BENCH_KEYS: ${BENCH_KEYS:-200}
+      BENCH_MIX: ${BENCH_MIX:-all}
+      BENCH_DRAIN: ${BENCH_DRAIN:-false}
+      PROCESSING_GUARANTEE: ${PROCESSING_GUARANTEE:-exactly_once_v2}
+      COMMIT_INTERVAL_MS: ${COMMIT_INTERVAL_MS:-100}
       BENCH_OUT: /results
     volumes:
       - ./bench/results:/results

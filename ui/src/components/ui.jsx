@@ -1,6 +1,6 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { dismiss, subscribe, toast } from '../toast.js';
-import { copyText, pretty, sevColor } from '../util.js';
+import { copyText, mergeFields, pretty, sevColor } from '../util.js';
 
 export function Toasts() {
   const [items, setItems] = useState([]);
@@ -45,9 +45,8 @@ export function ErrorBox({ children }) {
 export function Field({ label, hint, children, className }) {
   return (
     <label className={`field ${className || ''}`}>
-      <span className="field-label">{label}</span>
+      <span className="field-label">{label}{hint && <Help text={hint} />}</span>
       {children}
-      {hint && <span className="hint">{hint}</span>}
     </label>
   );
 }
@@ -88,30 +87,182 @@ export function JsonBlock({ value }) {
   return <pre className="code">{pretty(value)}</pre>;
 }
 
-// Text input with suggestions of known field paths; free typing is allowed for fields not seen yet.
-export function FieldInput({ value, onChange, fields, placeholder = 'Choose a field', ...rest }) {
+// Small "?" icon; the help text shows as a tooltip on hover or keyboard focus.
+// A span (not a button) so it never becomes the labelled control when used inside a <label>.
+export function Help({ text, label = 'Help' }) {
   const id = useId();
+  if (!text) return null;
   return (
-    <>
+    <span className="help" onClick={(e) => e.preventDefault()}>
+      <span className="help-icon" tabIndex={0} role="img" aria-label={label} aria-describedby={id}>?</span>
+      <span className="help-tip" role="tooltip" id={id}>{text}</span>
+    </span>
+  );
+}
+
+const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[_\s]+/g, ' ');
+
+// Text input with a styled suggestion list. options: [{value, detail}].
+// strict: only a value from the list can be chosen; anything else is reverted on blur.
+export function Combobox({ value, onChange, options, strict, placeholder, disabled, onKeyDown, className, maxShown = 300, ...rest }) {
+  const id = useId();
+  const listId = `${id}-list`;
+  const [text, setText] = useState(value || '');
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState(false);
+  const [active, setActive] = useState(-1);
+  const listRef = useRef(null);
+  const opts = useMemo(() => options || [], [options]);
+
+  useEffect(() => setText(value || ''), [value]);
+
+  const shown = useMemo(() => {
+    if (!typed || !text) return opts.slice(0, maxShown);
+    const q = norm(text);
+    return opts.filter((o) => norm(o.value).includes(q)).slice(0, maxShown);
+  }, [opts, text, typed, maxShown]);
+
+  useEffect(() => {
+    if (!open || active < 0 || !listRef.current) return;
+    const el = listRef.current.children[active];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }, [active, open]);
+
+  const openList = () => {
+    setOpen(true);
+    setActive(Math.max(0, shown.findIndex((o) => o.value === value)));
+  };
+
+  const choose = (o) => {
+    setText(o.value);
+    setOpen(false);
+    setTyped(false);
+    onChange(o.value);
+  };
+
+  const commitOrRevert = () => {
+    if (!strict) return;
+    const exact = opts.find((o) => norm(o.value) === norm(text));
+    if (exact) {
+      setText(exact.value);
+      if (exact.value !== value) onChange(exact.value);
+    } else setText(value || '');
+  };
+
+  const keyDown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return openList();
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      setActive((a) => Math.min(shown.length - 1, Math.max(0, a + d)));
+      return;
+    }
+    if (e.key === 'Enter' && open && active >= 0 && shown[active]) {
+      e.preventDefault();
+      choose(shown[active]);
+      return;
+    }
+    if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (e.key === 'Enter') commitOrRevert();
+    if (onKeyDown) onKeyDown(e);
+  };
+
+  return (
+    <div className={`combo ${className || ''}`}>
       <input
         type="text"
-        list={id}
-        value={value || ''}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open && active >= 0 ? `${id}-o${active}` : undefined}
+        value={text}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
         autoComplete="off"
         spellCheck={false}
+        onFocus={openList}
+        onClick={() => !open && openList()}
+        onBlur={() => {
+          setOpen(false);
+          setTyped(false);
+          commitOrRevert();
+        }}
+        onChange={(e) => {
+          setText(e.target.value);
+          setTyped(true);
+          setOpen(true);
+          setActive(0);
+          if (!strict) onChange(e.target.value);
+        }}
+        onKeyDown={keyDown}
         {...rest}
       />
-      <datalist id={id}>
-        {(fields || []).map((f) => (
-          <option key={f.path} value={f.path}>
-            {f.example != null && f.example !== '' ? `e.g. ${String(f.example).slice(0, 60)}` : f.type || ''}
-          </option>
-        ))}
-      </datalist>
-    </>
+      {open && !disabled && (
+        <ul className="combo-list" role="listbox" id={listId} ref={listRef}>
+          {shown.length === 0 && <li className="combo-empty">{strict ? 'No match. Choose a value from the list.' : 'No suggestions'}</li>}
+          {shown.map((o, i) => (
+            <li
+              key={o.value}
+              id={`${id}-o${i}`}
+              role="option"
+              aria-selected={o.value === value}
+              className={`${i === active ? 'active' : ''} ${o.value === value ? 'selected' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                choose(o);
+              }}
+              onMouseEnter={() => setActive(i)}
+            >
+              <span className="combo-value">{o.value}</span>
+              {o.detail && <span className="combo-detail">{o.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
+}
+
+const fieldDetail = (f) => {
+  const ex = f.example != null && f.example !== '' ? `e.g. ${String(f.example).slice(0, 40)}` : '';
+  return [f.type, ex].filter(Boolean).join(' · ');
+};
+
+// Field path input with suggestions of known fields (one entry per path); free typing is allowed for fields not seen yet.
+export function FieldInput({ value, onChange, fields, placeholder = 'Choose a field', ...rest }) {
+  const options = useMemo(() => mergeFields(fields).map((f) => ({ value: f.path, detail: fieldDetail(f) })), [fields]);
+  return <Combobox value={value} onChange={onChange} options={options} placeholder={placeholder} {...rest} />;
+}
+
+// Promise-based confirmation dialog in the app's modal style.
+// const [confirm, confirmDialog] = useConfirm(); if (await confirm({ title, body, confirmLabel })) ...
+export function useConfirm() {
+  const [state, setState] = useState(null);
+  const confirm = useCallback((opts) => new Promise((resolve) => setState({ ...opts, resolve })), []);
+  const close = (result) => {
+    if (state) state.resolve(result);
+    setState(null);
+  };
+  const dialog = state ? (
+    <Modal
+      title={state.title}
+      onClose={() => close(false)}
+      actions={
+        <>
+          <button type="button" className="btn primary" autoFocus onClick={() => close(false)}>{state.cancelLabel || 'Cancel'}</button>
+          <button type="button" className="btn danger" onClick={() => close(true)}>{state.confirmLabel || 'Delete'}</button>
+        </>
+      }
+    >
+      {typeof state.body === 'string' ? <p>{state.body}</p> : state.body}
+    </Modal>
+  ) : null;
+  return [confirm, dialog];
 }
 
 // Editable list of field paths shown as removable chips.
@@ -162,8 +313,7 @@ export function Section({ title, hint, children, actions }) {
     <section className="card">
       <div className="card-head">
         <div>
-          <h2>{title}</h2>
-          {hint && <p className="muted">{hint}</p>}
+          <h2>{title}{hint && <Help text={hint} />}</h2>
         </div>
         {actions && <div className="row">{actions}</div>}
       </div>

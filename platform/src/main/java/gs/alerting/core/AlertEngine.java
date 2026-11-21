@@ -124,12 +124,14 @@ public final class AlertEngine {
         JsonNode rb = Runbooks.select(rule, e, cfg);
         a.put("runbookId", rb == null ? null : Json.text(rb, "id"));
         a.put("ruleName", rule.name).put("updatedAt", wallClock);
+        if (rule.ownerUserId != null) a.put("ownerUserId", rule.ownerUserId); else a.remove("ownerUserId");
     }
 
     /** Rule targets → team policy → user channel preferences → quiet hours. */
     static void fanOut(Result r, ObjectNode alert, Config.Rule rule, Event e, Config.Snapshot cfg, int seq, long wallClock) {
         Set<String> userIds = new LinkedHashSet<>();
-        for (JsonNode t : rule.targets) {
+        if (rule.ownerUserId != null) userIds.add(rule.ownerUserId);   // private rule: the owner only, whatever the targets say
+        else for (JsonNode t : rule.targets) {
             String type = Json.text(t, "type", ""), id = Json.text(t, "id", "");
             switch (type) {
                 case "user" -> userIds.add(id);

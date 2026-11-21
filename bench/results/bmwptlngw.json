@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwptlngw",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 13.056,
+  "throughputPerSec" : 22978,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 1989,
+  "produceRatePerSec" : 150830,
+  "drainSec" : 11.046,
+  "drainRatePerSec" : 27159,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 7530,
+    "p95" : 11261,
+    "p99" : 11809,
+    "max" : 11882,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 1914,
+    "p95" : 1938,
+    "p99" : 1939,
+    "max" : 1958,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

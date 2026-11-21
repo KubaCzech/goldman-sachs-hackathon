@@ -110,7 +110,8 @@ public final class RunbookRoutes {
         app.post("/api/alerts/{id}/runbook/link", ctx -> {
             Caller c = ApiMain.caller(ctx);
             ObjectNode alert = AlertRoutes.alertFor(ctx);
-            c.requireTeamAdmin(Json.text(alert, "teamId"));
+            ObjectNode rule0 = ApiMain.must("rule", Json.text(alert, "ruleId"));
+            ApiMain.requireEditRule(c, rule0);
             ObjectNode rb = ApiMain.must("runbook", ApiMain.need(ApiMain.body(ctx), "runbookId"));
             c.requireMember(Json.text(rb, "teamId"));
             ObjectNode rule = ApiMain.must("rule", Json.text(alert, "ruleId"));

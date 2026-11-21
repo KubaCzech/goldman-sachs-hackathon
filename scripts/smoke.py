@@ -150,7 +150,7 @@ check("exactly one delivery row (no duplicate send)", len(dl()) == 1)
 rule = {"teamId": "rates", "name": "smoke fx " + RUN, "filterSql": f"payload.desk = 'fx-{RUN}' AND payload.notional > 1",
         "sourceIds": ["trade-gateway"], "groupBy": ["payload.tradeId"], "targets": [{"type": "team", "id": "rates"}], "channels": ["ui"],
         "presentation": {"titleTemplate": "FX {{payload.tradeId}} {{nope.missing}}", "bodyTemplate": "", "fields": [], "color": "#00897b"}}
-check("a member (not admin) cannot create a rule", call("POST", "/api/rules", sara, dict(rule, teamId="settlements"))[0] == 403)
+check("a member (not admin) cannot create a team rule", call("POST", "/api/rules", sara, dict(rule, teamId="settlements"))[0] == 403)
 check("a user cannot create a rule for another team", call("POST", "/api/rules", sam, rule)[0] == 403)
 s, created = call("POST", "/api/rules", ravi, rule)
 check("team admin creates a rule at runtime", s == 201 and created["allowedSources"] == ["trade-gateway"], str(created))
@@ -175,6 +175,24 @@ call("DELETE", "/api/sources/trade-gateway/grants/settlements", ravi)
 after = [r for r in call("GET", "/api/rules", sam)[1] if r["id"] == nosy["id"]][0]
 check("revoking the grant removes access again", after["allowedSources"] == [])
 call("DELETE", "/api/rules/" + nosy["id"], sam)
+
+# ---------------------------------------------------------------- private rules (a member's own rule)
+mine_rule = {"teamId": "settlements", "private": True, "name": "sara private " + RUN, "filterSql": f"workflowName = 'priv-{RUN}'",
+             "sourceIds": ["settlement-bus"], "groupBy": ["workflowName"], "targets": [{"type": "team", "id": "settlements"}]}
+s, pr = call("POST", "/api/rules", sara, mine_rule)
+check("a member can create a private rule", s == 201 and pr["ownerUserId"] == "u-sara", str(pr))
+check("a private rule notifies only its owner", s == 201 and pr["targets"] == [{"type": "user", "id": "u-sara"}], str(pr.get("targets")))
+check("the owner sees it with edit rights", [r["canEdit"] for r in call("GET", "/api/rules", sara)[1] if r["id"] == pr["id"]] == [True])
+check("the team admin does not see someone's private rule", not [r for r in call("GET", "/api/rules", sam)[1] if r["id"] == pr["id"]])
+check("the team admin cannot delete it", call("DELETE", "/api/rules/" + pr["id"], sam)[0] == 403)
+time.sleep(1)
+ingest("settlement-bus", {"type": "WORKFLOW_FAILED", "workflowId": "WF-P-" + RUN, "workflowName": "priv-" + RUN,
+                                                "severity": "ERROR", "environment": "prod", "timestamp": "2026-10-23T09:14:02.331Z"})
+pa_alert = wait_for(lambda: alerts(sara, f"workflowName = 'priv-{RUN}'"))
+check("the private rule's alert reaches its owner", bool(pa_alert) and pa_alert[0].get("ownerUserId") == "u-sara", str(pa_alert))
+check("the rest of the team does not see that alert", not alerts(sam, f"workflowName = 'priv-{RUN}'"))
+check("the alert itself is hidden from the team admin", bool(pa_alert) and call("GET", "/api/alerts/" + pa_alert[0]["alertId"], sam)[0] == 404)
+check("the owner deletes the private rule", call("DELETE", "/api/rules/" + pr["id"], sara)[0] == 204)
 
 # ---------------------------------------------------------------- unseen schema on a new source
 s, src = call("POST", "/api/sources", petra, {"teamId": "pricing", "name": "smoke " + RUN, "type": "webhook", "defaultSchemaId": None})

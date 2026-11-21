@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { asArray } from '../util.js';
-import { Empty, ErrorBox } from '../components/ui.jsx';
+import { Empty, ErrorBox, Help } from '../components/ui.jsx';
 
 export default function Login() {
   const { login, me } = useAuth();
@@ -36,7 +36,8 @@ export default function Login() {
       <div className="card login-card">
         <h1>Alerting</h1>
         <p className="muted">
-          Choose who to sign in as. Each person belongs to different teams and sees only what their role allows.
+          Choose who to sign in as.
+          <Help text="Each person belongs to different teams and sees only what their role allows." />
         </p>
         <ErrorBox>{error}</ErrorBox>
         {users === null && <Empty>Loading users…</Empty>}

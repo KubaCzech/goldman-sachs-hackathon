@@ -75,19 +75,20 @@ export function flattenPaths(obj, prefix = '', out = [], depth = 0) {
   return out;
 }
 
-// Merge field lists, de-duplicated by path (first wins).
+// Merge field lists into one entry per path. The first entry wins; empty properties (type, example, …)
+// are filled in from later entries for the same path.
 export function mergeFields(...lists) {
-  const seen = new Set();
-  const out = [];
+  const byPath = new Map();
+  const empty = (v) => v === undefined || v === null || v === '';
   lists.forEach((l) =>
     asArray(l).forEach((f) => {
-      if (f && f.path && !seen.has(f.path)) {
-        seen.add(f.path);
-        out.push(f);
-      }
+      if (!f || !f.path) return;
+      const cur = byPath.get(f.path);
+      if (!cur) byPath.set(f.path, { ...f });
+      else Object.keys(f).forEach((k) => { if (empty(cur[k]) && !empty(f[k])) cur[k] = f[k]; });
     })
   );
-  return out;
+  return [...byPath.values()];
 }
 
 export async function copyText(text) {

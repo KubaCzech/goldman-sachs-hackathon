@@ -1,0 +1,131 @@
+# Benchmark-only stack with ONE Kafka broker (replication factor 1), used to measure how a broker scales with the
+# cores it is given. Not for the demo: one broker means no replication. Separate project name, network and volumes,
+# no published ports, so it never touches the main stack (stop the main stack first to free the CPUs).
+#
+#   docker compose stop                                   # main stack, keeps its data
+#   python3 scripts/bench_scaling.py --broker-cores 1,2,3,4,6     (sets COMPOSE_FILE itself)
+name: alerting-1broker
+
+x-platform: &platform
+  image: alerting-platform:latest
+  build: ./platform
+  restart: unless-stopped
+
+x-platform-env: &platform-env
+  KAFKA_BOOTSTRAP: kafka1:9092
+  REPLICATION: 1
+  DB_URL: jdbc:postgresql://postgres:5432/alerting
+  DB_USER: alerting
+  DB_PASSWORD: alerting
+  PUBLIC_URL: http://localhost:3000
+
+services:
+  kafka1:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Same heap as one broker of the main stack; network/IO thread pools left at their defaults (8 IO, 3 network).
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: alerting
+      POSTGRES_USER: alerting
+      POSTGRES_PASSWORD: alerting
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alerting -d alerting"]
+      interval: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+
+  api:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: api
+      JWT_SECRET: demo-only-secret-change-me
+    depends_on:
+      kafka1: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  processor:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: processor
+      STREAM_THREADS: ${STREAM_THREADS:-3}
+      COMMIT_INTERVAL_MS: ${COMMIT_INTERVAL_MS:-100}
+      PROCESSING_GUARANTEE: ${PROCESSING_GUARANTEE:-exactly_once_v2}
+    deploy:
+      replicas: 2
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  dispatcher:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ROLE: dispatcher
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      DISPATCH_CONCURRENCY: ${DISPATCH_CONCURRENCY:-8}
+      DB_POOL: 20
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8082/readyz > /dev/null"]
+      interval: 5s
+      retries: 40
+      start_period: 20s
+
+  bench:
+    <<: *platform
+    restart: "no"
+    profiles: ["bench"]
+    environment:
+      <<: *platform-env
+      ROLE: bench
+      BENCH_EVENTS: ${BENCH_EVENTS:-200000}
+      BENCH_RATE: ${BENCH_RATE:-20000}
+      BENCH_KEYS: ${BENCH_KEYS:-200}
+      BENCH_MIX: ${BENCH_MIX:-all}
+      BENCH_DRAIN: ${BENCH_DRAIN:-false}
+      PROCESSING_GUARANTEE: ${PROCESSING_GUARANTEE:-exactly_once_v2}
+      COMMIT_INTERVAL_MS: ${COMMIT_INTERVAL_MS:-100}
+      BENCH_OUT: /results
+    volumes:
+      - ./bench/results:/results

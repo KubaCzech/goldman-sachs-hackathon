@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwptpa7j",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 7.327,
+  "throughputPerSec" : 40944,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 1089,
+  "produceRatePerSec" : 275482,
+  "drainSec" : 6.222,
+  "drainRatePerSec" : 48216,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 3270,
+    "p95" : 6089,
+    "p99" : 6367,
+    "max" : 6492,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 1057,
+    "p95" : 1068,
+    "p99" : 1069,
+    "max" : 1079,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}

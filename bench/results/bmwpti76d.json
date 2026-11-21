@@ -1,0 +1,35 @@
+{
+  "runId" : "bmwpti76d",
+  "mix" : "all",
+  "eventsSent" : 300000,
+  "eventsAccountedFor" : 300000,
+  "lost" : 0,
+  "targetRatePerSec" : 2147483647,
+  "durationSec" : 10.848,
+  "throughputPerSec" : 27655,
+  "alertGroups" : 401,
+  "drainMode" : true,
+  "producedMs" : 583,
+  "produceRatePerSec" : 514580,
+  "drainSec" : 10.249,
+  "drainRatePerSec" : 29271,
+  "alertUpdatesObserved" : 300000,
+  "notificationsObserved" : 400,
+  "ingestToAlertMs" : {
+    "p50" : 5787,
+    "p95" : 9891,
+    "p99" : 10318,
+    "max" : 10572,
+    "samples" : 300000
+  },
+  "ingestToNotificationMs" : {
+    "p50" : 890,
+    "p95" : 2269,
+    "p99" : 3284,
+    "max" : 3290,
+    "samples" : 400
+  },
+  "processingGuarantee" : "exactly_once_v2",
+  "commitIntervalMs" : 100,
+  "note" : "Latency is measured by this process on receipt, from the ingest timestamp header to the record being readable (read_committed)."
+}
