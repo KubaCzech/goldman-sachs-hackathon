@@ -1,8 +1,8 @@
 # Flexible Alerting & Notification Service
 
 Gets the right alert to the right people on the channel they prefer, and shows them the runbook to resolve it.
-Built on Kafka Streams with exactly-once processing; rules, schemas and sources are data, changed at runtime
-without restarting anything.
+Built on Kafka Streams with exactly-once processing (or at-least-once, as a setting, when latency matters most); rules,
+schemas and sources are data, changed at runtime without restarting anything.
 
 ## Start
 
@@ -51,11 +51,11 @@ curl -X POST http://localhost:8080/ingest/pricing-logs -H 'X-Source-Token: demo-
 | Area | What is built and measured | Evidence |
 |---|---|---|
 | **Flexibility** | Three kinds of source: webhook (pushed to us), Kafka topic, and HTTP polling (the service fetches a URL on a schedule, sends only changes, and turns "the URL stopped answering" into a `POLL_FAILED` event). New source, schema, rule, runbook and action type are configuration, made in the UI or API, live within seconds, no restart. Any input format (JSON, JSON lines, CSV/TSV, YAML, XML, key=value, syslog, form fields, plain text) and any schema, including ones never registered. Rules: a SQL `WHERE` subset (`AND`/`OR`/`NOT`, `IN`, `BETWEEN`, `LIKE`, `IS NULL`, nested paths, numeric and severity comparisons), "N events within M seconds", automatic resolve condition, re-notify interval, severity override, title/body templates, grouping. The same condition language searches alert history. A new delivery channel provider is one class. | UI → Sources, Rules; [Adding things](#adding-things); `core/Formats.java` |
-| **Scalability** | One fixed exactly-once topology, scaled by partitions: add processor instances or threads, no code change. Rules: compacted Kafka topic held by every instance. Dedup and window state: per alert key in a local store backed by a Kafka changelog, so an instance can die and another takes over. Delivery status: Postgres with an idempotency key. Measured: processors 1 → 6 cores gives 2.9×; a broker's second core doubles throughput. Known limits: one very hot alert key is handled by one thread (a rule-design choice); Postgres is a single instance (configuration and read model; not on the event path). | [Benchmark](#benchmark), [How it works](#how-it-works), `scripts/bench_scaling.py` |
+| **Scalability** | One fixed exactly-once topology, scaled by partitions: add processor instances or threads, no code change. Rules: compacted Kafka topic held by every instance. Dedup and window state: per alert key in a local store backed by a Kafka changelog, so an instance can die and another takes over. Delivery status: Postgres with an idempotency key. Kafka: 3 brokers, replication factor 3, min in-sync replicas 2, so one broker can fail. Measured: processors 1 → 6 cores gives 2.9×; a broker's second core doubles throughput. Limits: events of one alert are handled in order by one thread, so a rule that sends a large share of traffic into a single alert is split by grouping finer (a rule setting); Postgres is a single instance (configuration and read model; not on the event path). | [Benchmark](#benchmark), [How it works](#how-it-works), `scripts/bench_scaling.py` |
 | **UX** | One command to start. A new team gets its first alert about 7 s after creating a source and a rule (measured: 3 API calls, or a few clicks). Rule builder: pick sources, then only their fields (from their schema and their recent events, with the values seen), typed operators, "match all / any", live preview against a sample in any format; SQL mode with live checking for complex rules. Help behind "?" icons, unsaved-changes guard, dark mode. Alerts show a rendered title, chosen fields, a filled-in runbook with runnable steps, and every delivery attempt. | UI at http://localhost:3000; [Start](#start) |
-| **Throughput / latency** | At 1,500 events/s: ingest → alert p50 222 ms / p99 ≈ 370 ms, ingest → email delivered p50 411–665 ms / p99 610–860 ms. Capacity on one laptop: 36,000–56,000 events/s (default), up to 121,000 events/s (one broker on 4 cores). No lost events in any run, checked against Postgres. | [Benchmark](#benchmark), `bench/results/` |
+| **Throughput / latency** | Ingested (written to Kafka) at 150,000–760,000 events/s; processed end to end at 36,000–56,000 events/s on one laptop (default), up to 121,000 events/s (one broker on 4 cores). At 1,500 events/s with exactly-once: ingest → alert p50 222 ms / p99 ≈ 370 ms, ingest → email delivered p50 411–665 ms / p99 610–860 ms. With at-least-once (`PROCESSING_GUARANTEE`): ingest → alert p50 18 ms / p99 73 ms at the same throughput. No lost events in any run under either guarantee, checked against Postgres. | [Benchmark](#benchmark), `bench/results/` |
 | **Implementation** | Working end to end; 41 unit/topology tests and 92 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
-| **What is new here** | Rules hot-swapped as data in an exactly-once stream; one condition language compiled three ways (stream predicate, visual builder, parameterised SQL over history); format- and schema-agnostic ingest; runbooks that fill themselves from the alert, run actions behind approvals, learn a link when someone confirms a suggestion, and are written back from a handled incident ("Save what was done as a runbook" turns the audit trail and notes into a reviewed draft, with that incident's values turned back into placeholders); a benchmark suite that found and fixed a real event-loss race. | [How it works](#how-it-works) |
+| **What is new here** | Rules hot-swapped as data in an exactly-once stream, with the processing guarantee selectable per deployment; one condition language compiled three ways (stream predicate, visual builder, parameterised SQL over history); format- and schema-agnostic ingest; runbooks that fill themselves from the alert, run actions behind approvals, learn a link when someone confirms a suggestion, and are written back from a handled incident ("Save what was done as a runbook" turns the audit trail and notes into a reviewed draft, with that incident's values turned back into placeholders); a filter described in plain words and written as checked SQL (optional, [details](#describe-a-filter-in-words-optional)). | [How it works](#how-it-works) |
 
 ## Seeded demo data
 
@@ -147,16 +147,19 @@ third of the original mix lands on one partition and one thread. In the single-b
 about 120,000 events/s, while the original mix stays near 58,000 events/s whatever the broker's core count. The fix is in the
 rule (group by something finer), not in hardware.
 
-**Exactly-once costs latency, not throughput** (default deployment, same day):
+**The processing guarantee is a setting** (`PROCESSING_GUARANTEE` on the processors; default deployment, same day):
 
-| Setting | Events/s (spread / original mix) | Ingest → alert p50 / p99 |
-|---|---|---|
-| Exactly-once, commit 100 ms (default) | 55,939 / 51,738 | 215 / 397 ms |
-| At-least-once | 51,507 / 42,833 | 18 / 73 ms |
-| Exactly-once, commit 1,000 ms | 60,411 / 43,901 | 1,676 / 2,068 ms |
+| Setting | Events/s (spread / original mix) | Ingest → alert p50 / p99 | Ingest → delivered email p50 / p99 | Events lost |
+|---|---|---|---|---|
+| Exactly-once, commit 100 ms (default) | 55,939 / 51,738 | 215 / 397 ms | 668 / 1,018 ms | 0 |
+| At-least-once | 51,507 / 42,833 | 18 / 73 ms | 573 / 1,015 ms | 0 |
+| Exactly-once, commit 1,000 ms | 60,411 / 43,901 | 1,676 / 2,068 ms | 1,791 / 2,371 ms | 0 |
 
-Exactly-once makes each event wait for a commit at both stages (about 200 ms). It is kept because it guarantees an
-alert's counter and notification decision are not repeated after a crash.
+Exactly-once makes each event wait for a commit at both stages (about 200 ms) and guarantees that an alert's counter
+and notification decision are not repeated after a crash. At-least-once removes that wait: an alert is raised about
+12 times sooner at the same throughput, and no event is lost; after a crash an event may be processed again.
+`COMMIT_INTERVAL_MS` tunes the exactly-once wait. Time to a delivered email is dominated by the hand-off to the mail
+server in both modes.
 
 ## How it works
 
