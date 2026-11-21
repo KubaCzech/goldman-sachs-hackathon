@@ -1,10 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { mergeFields } from '../util.js';
-import { FieldInput, Help, Modal } from './ui.jsx';
+import { Combobox, FieldInput, Help, Modal } from './ui.jsx';
 
-// Filter value held by the parent: { mode: 'builder' | 'sql', conditions: [{field, op, value, value2, numeric}], sql }
-export const emptyFilter = () => ({ mode: 'builder', conditions: [], sql: '' });
+// Filter value held by the parent: { mode: 'builder' | 'sql', join: 'and' | 'or', conditions: [{field, op, value, value2, numeric}], sql }
+export const emptyFilter = () => ({ mode: 'builder', join: 'and', conditions: [], sql: '' });
+
+// Top-level join of a stored AST: the builder shows "all of" (AND) or "any of" (OR) a flat list of conditions.
+export const joinOf = (ast) => (ast && ast.op === 'or' ? 'or' : 'and');
 
 // Each field has a kind that decides which operators and which value input the builder offers.
 // severity is an ordered enum (unknown < info < warning < error < critical on the server).
@@ -68,9 +71,9 @@ const isComplete = (c) =>
   (NO_VALUE.includes(c.op) ||
     (String(c.value ?? '').trim() !== '' && (c.op !== 'between' || String(c.value2 ?? '').trim() !== '')));
 
-// Builder conditions -> AST (section 6.1). Always an AND list. Operators map to the API's AST nodes:
+// Builder conditions -> AST (section 6.1). A flat AND (all) or OR (any) list. Operators map to the API's AST nodes:
 // ne, isnull/notnull, NOT IN = {op:not, arg:{op:in}}, contains / starts with = like '%x%' / 'x%'.
-export function conditionsToAst(conditions, fields) {
+export function conditionsToAst(conditions, fields, join = 'and') {
   const args = (conditions || []).filter(isComplete).map((c) => {
     const field = c.field.trim();
     const kind = fieldKind(field, fields, c.hint);
@@ -93,7 +96,7 @@ export function conditionsToAst(conditions, fields) {
         return { op: c.op, field, value: val(c.value) };
     }
   });
-  return { op: 'and', args };
+  return { op: join === 'or' && args.length > 1 ? 'or' : 'and', args };
 }
 
 const hintOf = (v) => (typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : undefined);
@@ -102,7 +105,7 @@ const scalar = (v) => v !== null && v !== undefined && typeof v !== 'object';
 // AST -> builder conditions, or null when the builder cannot show the AST (section 6.4).
 export function astToConditions(ast) {
   if (!ast || typeof ast !== 'object') return [];
-  const nodes = ast.op === 'and' ? ast.args || [] : [ast];
+  const nodes = ast.op === 'and' || ast.op === 'or' ? ast.args || [] : [ast];
   const out = [];
   const listCond = (n, op) => {
     const vals = n.values || [];
@@ -146,8 +149,8 @@ export function astToConditions(ast) {
 // Initial editor value from a stored AST and/or SQL text (rules, schemas).
 export function filterFromStored(ast, sql) {
   const conds = ast ? astToConditions(ast) : sql && sql.trim() ? null : [];
-  if (conds) return { mode: 'builder', conditions: conds, sql: sql || '' };
-  return { mode: 'sql', conditions: [], sql: sql || '' };
+  if (conds) return { mode: 'builder', join: joinOf(ast), conditions: conds, sql: sql || '' };
+  return { mode: 'sql', join: 'and', conditions: [], sql: sql || '' };
 }
 
 // Initial editor value from SQL text only (saved filters): asks the API whether it fits the builder.
@@ -157,17 +160,17 @@ export async function filterFromSql(sql) {
     const r = await api.post('/api/filters/parse', { sql });
     // The builder decides for itself what it can show (it supports more than the server's guiCompatible flag).
     const conds = r && r.ast ? astToConditions(r.ast) : null;
-    if (conds) return { mode: 'builder', conditions: conds, sql: (r && r.sql) || sql };
+    if (conds) return { mode: 'builder', join: joinOf(r.ast), conditions: conds, sql: (r && r.sql) || sql };
   } catch {
     /* keep SQL as typed; the error shows up when it is applied */
   }
-  return { mode: 'sql', conditions: [], sql };
+  return { mode: 'sql', join: 'and', conditions: [], sql };
 }
 
 // Resolve the editor value to what the API needs. opts: { needSql, needAst }.
 export async function resolveFilter(value, fields, opts = {}) {
   if (value.mode === 'builder') {
-    const ast = conditionsToAst(value.conditions, fields);
+    const ast = conditionsToAst(value.conditions, fields, value.join);
     let sql;
     if (opts.needSql) {
       if (ast.args.length === 0) sql = '';
@@ -183,8 +186,10 @@ export async function resolveFilter(value, fields, opts = {}) {
 
 const ENUM_KINDS = ['severity', 'enum', 'boolean'];
 
-function ValueInput({ c, kind, update, disabled }) {
+function ValueInput({ c, kind, update, disabled, fields }) {
   if (NO_VALUE.includes(c.op)) return null;
+  const known = findField(c.field.trim(), fields);
+  const seen = known && Array.isArray(known.values) ? known.values.map(String) : [];
   const choices = enumValues(kind, c.field.trim());
   const listOp = LIST_OPS.includes(c.op);
 
@@ -216,6 +221,29 @@ function ValueInput({ c, kind, update, disabled }) {
     return <div className="cond-values">{select('value', 'Value')}</div>;
   }
 
+  // A text field with values seen in recent events: pick one or type another.
+  if (kind === 'text' && seen.length && !listOp && c.op !== 'between') {
+    return (
+      <div className="cond-values">
+        <Combobox value={c.value || ''} onChange={(x) => update({ value: x })} options={seen.map((x) => ({ value: x }))} placeholder="Choose or type a value" aria-label="Value" disabled={disabled} />
+      </div>
+    );
+  }
+  if (kind === 'text' && seen.length && listOp) {
+    const picked = splitList(c.value);
+    const all = [...seen, ...picked.filter((p) => !seen.includes(p))];
+    const toggle = (x) => update({ value: (picked.includes(x) ? picked.filter((p) => p !== x) : [...picked, x]).join(', ') });
+    return (
+      <div className="cond-values value-chips" role="group" aria-label="Values">
+        {all.map((x) => (
+          <label key={x} className={`toggle ${picked.includes(x) ? 'on' : ''}`}>
+            <input type="checkbox" checked={picked.includes(x)} onChange={() => toggle(x)} disabled={disabled} /> {x}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
   const numeric = kind === 'number' && !listOp;
   const input = (key, label, placeholder) => (
     <input
@@ -233,13 +261,32 @@ function ValueInput({ c, kind, update, disabled }) {
   return <div className="cond-values">{input('value', 'Value', kind === 'number' ? 'number' : 'value')}</div>;
 }
 
-export default function FilterEditor({ value, onChange, fields: rawFields, emptyText, disabled }) {
+export default function FilterEditor({ value, onChange, fields: rawFields, emptyText, disabled, strictFields = false, fieldsNote }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(false);
   const fields = useMemo(() => mergeFields(rawFields), [rawFields]);
   const v = value || emptyFilter();
   const conditions = v.conditions || [];
+  const join = v.join === 'or' ? 'or' : 'and';
+
+  // SQL mode: check the text as it is typed (same parser the server uses), so mistakes show before saving.
+  const [sqlCheck, setSqlCheck] = useState(null);
+  useEffect(() => {
+    if (v.mode !== 'sql') return undefined;
+    const sql = (v.sql || '').trim();
+    if (!sql) { setSqlCheck(null); return undefined; }
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        await api.post('/api/filters/parse', { sql });
+        if (live) setSqlCheck({ ok: true });
+      } catch (e) {
+        if (live) setSqlCheck({ ok: false, message: e.message });
+      }
+    }, 400);
+    return () => { live = false; clearTimeout(t); };
+  }, [v.mode, v.sql]);
 
   const setConditions = (next) => onChange({ ...v, conditions: next });
   const update = (i, patch) => setConditions(conditions.map((c, j) => (j === i ? { ...c, ...patch } : c)));
@@ -270,7 +317,7 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
   const toSql = async () => {
     if (v.mode === 'sql' || busy) return;
     setError(null);
-    const ast = conditionsToAst(conditions, fields);
+    const ast = conditionsToAst(conditions, fields, join);
     if (ast.args.length === 0) return onChange({ ...v, mode: 'sql', sql: '' });
     setBusy(true);
     try {
@@ -287,12 +334,12 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
     if (v.mode === 'builder' || busy) return;
     setError(null);
     const sql = (v.sql || '').trim();
-    if (!sql) return onChange({ mode: 'builder', conditions: [], sql: '' });
+    if (!sql) return onChange({ mode: 'builder', join: 'and', conditions: [], sql: '' });
     setBusy(true);
     try {
       const r = await api.post('/api/filters/parse', { sql });
       const conds = r && r.ast ? astToConditions(r.ast) : null;
-      if (conds) onChange({ mode: 'builder', conditions: conds, sql: (r && r.sql) || sql });
+      if (conds) onChange({ mode: 'builder', join: joinOf(r.ast), conditions: conds, sql: (r && r.sql) || sql });
       else setDialog(true);
     } catch (e) {
       setError(`This SQL is not valid yet: ${e.message}`);
@@ -318,19 +365,30 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
 
       {v.mode === 'builder' ? (
         <div className="builder">
+          {fieldsNote && <div className="note-box">{fieldsNote}</div>}
+          {conditions.length > 1 && (
+            <div className="row builder-join">
+              <span>Match</span>
+              <select value={join} onChange={(e) => onChange({ ...v, join: e.target.value })} aria-label="Match all or any" disabled={disabled}>
+                <option value="and">all of these conditions (AND)</option>
+                <option value="or">any of these conditions (OR)</option>
+              </select>
+              <Help text="For mixes such as (A and B) or C, switch to SQL: it accepts brackets, NOT and any combination." />
+            </div>
+          )}
           {conditions.length === 0 && <div className="muted builder-empty">{emptyText || 'No conditions yet. Everything matches.'}</div>}
           {conditions.map((c, i) => {
             const kind = fieldKind(c.field, fields, c.hint);
             return (
               <div className="cond" key={i}>
-                <span className="cond-join">{i === 0 ? 'Where' : 'and'}</span>
-                <FieldInput className="cond-field" value={c.field} onChange={(field) => changeField(i, field)} fields={fields} aria-label="Field" disabled={disabled} />
+                <span className="cond-join">{i === 0 ? 'Where' : join === 'or' ? 'or' : 'and'}</span>
+                <FieldInput className="cond-field" value={c.field} onChange={(field) => changeField(i, field)} fields={fields} aria-label="Field" disabled={disabled} strict={strictFields && fields.length > 0} />
                 <select className="cond-op" value={c.op} onChange={(e) => changeOp(i, e.target.value)} aria-label="Operator" disabled={disabled}>
                   {opsFor(kind, c.op).map(([op, label]) => (
                     <option key={op} value={op}>{label}</option>
                   ))}
                 </select>
-                <ValueInput c={c} kind={kind} update={(patch) => update(i, patch)} disabled={disabled} />
+                <ValueInput c={c} kind={kind} update={(patch) => update(i, patch)} disabled={disabled} fields={fields} />
                 <button type="button" className="btn small ghost cond-remove" onClick={() => setConditions(conditions.filter((_, j) => j !== i))} aria-label="Remove condition" disabled={disabled}>
                   Remove
                 </button>
@@ -354,6 +412,9 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
             disabled={disabled}
             aria-label="SQL filter"
           />
+          {sqlCheck && (sqlCheck.ok
+            ? <div className="muted">Valid filter.</div>
+            : <div className="error-box">{sqlCheck.message}</div>)}
         </div>
       )}
 
@@ -373,8 +434,9 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
           }
         >
           <p>
-            The builder only supports a list of conditions joined by AND. This filter uses something else, such as OR,
-            NOT around a group, brackets, or a LIKE pattern other than "contains" or "starts with".
+            The builder shows a list of conditions that must all match, or of which any must match. This filter uses
+            something else, such as AND mixed with OR, NOT around a group, brackets, or a LIKE pattern other than
+            "contains" or "starts with".
           </p>
           <p>You can keep editing it as SQL, or discard it and start again in the builder.</p>
         </Modal>

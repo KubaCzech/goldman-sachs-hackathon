@@ -16,8 +16,10 @@ docker compose up --build
 | API | http://localhost:8080 |
 | Mock mailbox (emails sent by the service) | http://localhost:8025 |
 
-Needs Docker with about 6 GB of memory. First build downloads dependencies; after that a clean start takes
-about 20 seconds.
+Needs Docker with about 6 GB of memory. One command, no other setup. Measured on the laptop used for the benchmark:
+building the two service images from scratch takes about 70 s once Docker has the base images (a fresh machine
+first downloads Kafka, Postgres, Mailpit and the Java/Node base images, which depends on the network); after that
+a clean start takes about 20 s.
 
 Send a first event:
 
@@ -27,7 +29,25 @@ curl -X POST http://localhost:8080/ingest/metrics-webhook -H 'X-Source-Token: de
   "annotations":{"summary":"Error rate 12% over the last 5 minutes"},"startsAt":"2026-10-23T09:13:00Z","status":"firing"}'
 ```
 
-Log in as **anna** to see it. Log in as **ravi** (another team) to see that he cannot.
+Log in as **anna** to see it. Log in as **ravi** (another team) to see that the Rates team cannot.
+
+Events do not have to be JSON: the same endpoint takes CSV, YAML, XML, `key=value` lines, syslog or plain text.
+
+```bash
+curl -X POST http://localhost:8080/ingest/pricing-logs -H 'X-Source-Token: demo-pricing-logs' \
+  --data-binary 'level=warn service=pricing-engine-2 instrument=EURUSD latencyMs=1240 msg="cache miss"'
+```
+
+## At a glance
+
+| Area | What is built and measured | Evidence |
+|---|---|---|
+| **Flexibility** | New source, schema, rule, runbook and action type are configuration, made in the UI or API, live within seconds, no restart. Any input format (JSON, JSON lines, CSV/TSV, YAML, XML, key=value, syslog, form fields, plain text) and any schema, including ones never registered. Rules: a SQL `WHERE` subset (`AND`/`OR`/`NOT`, `IN`, `BETWEEN`, `LIKE`, `IS NULL`, nested paths, numeric and severity comparisons), "N events within M seconds", automatic resolve condition, re-notify interval, severity override, title/body templates, grouping. The same condition language searches alert history. A new delivery channel provider is one class. | UI → Sources, Rules; [Adding things](#adding-things); `core/Formats.java` |
+| **Scalability** | One fixed exactly-once topology, scaled by partitions: add processor instances or threads, no code change. Rules: compacted Kafka topic held by every instance. Dedup and window state: per alert key in a local store backed by a Kafka changelog, so an instance can die and another takes over. Delivery status: Postgres with an idempotency key. Measured: processors 1 → 6 cores gives 2.9×; a broker's second core doubles throughput. Known limits: one very hot alert key is handled by one thread (a rule-design choice); Postgres is a single instance (configuration and read model; not on the event path). | [Benchmark](#benchmark), [How it works](#how-it-works), `scripts/bench_scaling.py` |
+| **UX** | One command to start. A new team gets its first alert about 7 s after creating a source and a rule (measured: 3 API calls, or a few clicks). Rule builder: pick sources, then only their fields (from their schema and their recent events, with the values seen), typed operators, "match all / any", live preview against a sample in any format; SQL mode with live checking for complex rules. Help behind "?" icons, unsaved-changes guard, dark mode. Alerts show a rendered title, chosen fields, a filled-in runbook with runnable steps, and every delivery attempt. | UI at http://localhost:3000; [Start](#start) |
+| **Throughput / latency** | At 1,500 events/s: ingest → alert p50 222 ms / p99 ≈ 370 ms, ingest → email delivered p50 411–665 ms / p99 610–860 ms. Capacity on one laptop: 36,000–56,000 events/s (default), up to 121,000 events/s (one broker on 4 cores). No lost events in any run, checked against Postgres. | [Benchmark](#benchmark), `bench/results/` |
+| **Implementation** | Working end to end; 34 unit/topology tests and 82 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
+| **What is new here** | Rules hot-swapped as data in an exactly-once stream; one condition language compiled three ways (stream predicate, visual builder, parameterised SQL over history); format- and schema-agnostic ingest; runbooks that fill themselves from the alert, run actions behind approvals, and learn a link when someone confirms a suggestion; a benchmark suite that found and fixed a real event-loss race. | [How it works](#how-it-works) |
 
 ## Seeded demo data
 
@@ -58,6 +78,12 @@ created at runtime, private rules (visible and notified to their owner only), so
 matching, placeholder filling, actions, approval and audit.
 
 ## Benchmark
+
+Two event mixes are used. **Spread** sends the metrics and trade samples only; their rules group by a
+per-event key (region, trade id), so the load spreads evenly over all partitions and threads. **Original mix** adds the
+settlement sample, whose seeded rule groups every failure of the workflow into one single alert: a third of all events
+then go to one alert, which one thread must handle in order. Spread shows what the system can do; the original mix
+shows what one very hot alert costs.
 
 Everything below was measured on one laptop (11 CPUs and 8 GB given to Docker) running the whole system: 3 brokers
 (replication factor 3), Postgres, API, dispatcher, the load generator and the processors. Events are the three sample
@@ -164,6 +190,16 @@ Full detail: [`docs/SPEC.md`](docs/SPEC.md). Phases and test gates: [`docs/PLAN.
 | Runbook | UI → paste YAML, Markdown or any text | No |
 | Action type that is an HTTP call | `POST /api/action-types` with URL and body templates | No |
 | Delivery channel provider | one class implementing `ChannelAdapter`, listed in `ChannelAdapters.all()` | One class |
+
+## Identity and teams (demo vs production)
+
+The login screen is a **demo**: pick a user, get a signed token. Users, teams and roles are seeded. In production
+the sign-in is the company's SSO (OIDC or SAML). The identity provider's token carries the user and their directory
+groups, and groups map to teams and roles (for example `grp-settlements-admins` → admin of Settlements). Every access
+check in the service reads one resolved object, the caller's teams and roles (`Auth.Caller`), built in one place
+(`Auth.load`). Switching to SSO replaces that one function with "verify the token and map its groups"; nothing else
+changes. Team-specific settings that a directory does not hold (who is on call, whether the whole team or only the
+on-call person is notified) stay in the service, under Admin. Not built: the SSO adapter itself.
 
 ## What is mocked or not built
 

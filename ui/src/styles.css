@@ -395,6 +395,7 @@ summary { cursor: pointer; color: var(--primary); font-weight: 500; }
 .rule-list .item:last-child { margin-bottom: 0; }
 .checks.vertical { flex-direction: column; gap: 2px; }
 .badge.private { background: var(--private-bg); color: var(--private-text); }
+.builder-join { align-items: center; gap: 8px; margin: 0 0 8px; }
 .note-box { background: var(--hover-bg); border: 1px solid var(--insert-border); color: var(--chip-text); border-radius: 6px; padding: 9px 12px; margin: 6px 0; }
 .subtabs { margin-bottom: 16px; }
 .tz-input { width: 260px; }

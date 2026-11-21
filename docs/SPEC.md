@@ -13,7 +13,7 @@ taken during review. Scope is sized for an 8-hour build; section 14 lists what i
 | D3 | Postgres is the system of record for configuration. Every config write is committed to Postgres then published to the compacted topic `cfg`. On API start all config is republished (reconciliation). | Relational integrity for RBAC; Streams reads config as a table. A transactional outbox is the production upgrade. |
 | D4 | Kafka exactly-once (`exactly_once_v2`) inside the pipeline. At the edge, dispatchers use an idempotency key (`notificationId`) stored in Postgres. | EOS cannot cover side effects outside Kafka. |
 | D5 | No blocking I/O inside the topology. Dispatch, runbook actions and runbook search run in plain services. | Blocking stalls partitions and causes rebalances. |
-| D6 | Lenient ingestion: an event is never dropped because of its schema. Unknown JSON gets `schemaId = "unknown"` and heuristic canonical fields. Only non-JSON goes to `ingest.dlq`. | Judges bring unseen schemas; dropping alerts is the worst failure. |
+| D6 | Lenient ingestion: an event is never dropped because of its schema or format. Unknown schemas get `schemaId = "unknown"` and heuristic canonical fields; any text format is parsed (section 15). Only non-text bodies go to `ingest.dlq`. | Unseen schemas and formats must still alert; dropping alerts is the worst failure. |
 | D7 | Presentation uses logic-less `{{path}}` templates. | Sandboxed by construction; maps to a block editor. |
 | D8 | RBAC is default-deny: owner team plus explicit grants. Enforced in the API and stamped into published rules (`allowedSources`) so the stream check is an in-memory lookup. | RBAC must not be a hot-path bottleneck. |
 | D9 | Auth is a mock login (pick a seeded user, receive a JWT). RBAC is enforced for real server-side. | Demo scope. |
@@ -485,3 +485,13 @@ These supersede the sections above where they differ.
   bodies go to `ingest.dlq`. The webhook answers `{"accepted": <events>, "format": <detected>}`. `POST
   /api/formats/parse {text, format?}` shows how a sample is read; schema inference and rule preview accept a sample
   in any format.
+- **Field catalog:** `GET /api/fields?sourceIds=a,b` returns built-in fields (with `scope` `event` or `alert`), the
+  fields of the schemas those sources use (default schema plus schemas their recent events were recognised as) and
+  the fields of their last ~50 events read from Kafka, each with `type`, `example`, `origin`
+  (`built-in` | `schema` | `observed`) and, for text fields with at most 12 distinct values, `values`. Sources the
+  caller may not read contribute nothing. The rule editor offers only these fields (plus a pasted sample's), with
+  typed operators and observed values as choices.
+- **Builder join:** the builder holds a flat list joined by AND ("all of") or OR ("any of"); mixed nesting stays
+  in SQL mode, which is checked as it is typed.
+- **Identity:** demo login only; production SSO would replace `Auth.load` with token verification plus a
+  group → team/role mapping (README, "Identity and teams").

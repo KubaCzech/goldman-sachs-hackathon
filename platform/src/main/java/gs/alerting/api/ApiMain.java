@@ -372,21 +372,9 @@ public final class ApiMain {
             Store.delete("schema", Json.text(s, "id"));
             ctx.status(204);
         });
-        app.get("/api/fields", ctx -> {
-            ArrayNode out = Json.arr();
-            for (String[] f : new String[][]{{"severity", "string", "error"}, {"type", "string", ""}, {"service", "string", ""}, {"source", "string", ""},
-                    {"schema", "string", ""}, {"eventTime", "number", ""}, {"status", "string", "OPEN"}, {"count", "number", ""}})
-                out.addObject().put("path", f[0]).put("type", f[1]).put("example", f[2]).put("schemaId", "canonical");
-            java.util.Set<String> seen = new java.util.HashSet<>();
-            for (ObjectNode s : Store.list("schema")) for (JsonNode f : s.path("fields")) {
-                String p = Json.text(f, "path");
-                if (p == null || !seen.add(p)) continue;
-                ObjectNode o = ((ObjectNode) f).deepCopy();
-                o.put("schemaId", Json.text(s, "id"));
-                out.add(o);
-            }
-            json(ctx, out);
-        });
+        // Fields a rule or search can use. With ?sourceIds=a,b: only what those sources send (their schemas and the
+        // fields and values of their last events), checked against the caller's read access.
+        app.get("/api/fields", ctx -> json(ctx, FieldCatalog.catalog(caller(ctx), FieldCatalog.split(ctx.queryParam("sourceIds")))));
     }
 
     private static ObjectNode saveSchema(Caller c, ObjectNode b, String id) {

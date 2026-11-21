@@ -228,9 +228,10 @@ export function Combobox({ value, onChange, options, strict, placeholder, disabl
   );
 }
 
+const ORIGIN_LABEL = { 'built-in': 'built-in', schema: 'from schema', observed: 'seen in recent events', sample: 'from the sample' };
 const fieldDetail = (f) => {
   const ex = f.example != null && f.example !== '' ? `e.g. ${String(f.example).slice(0, 40)}` : '';
-  return [f.type, ex].filter(Boolean).join(' · ');
+  return [f.type, ex, ORIGIN_LABEL[f.origin]].filter(Boolean).join(' · ');
 };
 
 // Field path input with suggestions of known fields (one entry per path); free typing is allowed for fields not seen yet.

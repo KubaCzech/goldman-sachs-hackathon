@@ -36,8 +36,8 @@ export default function Login() {
       <div className="card login-card">
         <h1>Alerting</h1>
         <p className="muted">
-          Choose who to sign in as.
-          <Help text="Each person belongs to different teams and sees only what their role allows." />
+          Demo sign-in: choose who to sign in as.
+          <Help text="Each person belongs to different teams and sees only what their role allows. In production this screen is the company's single sign-on, and teams and roles come from directory groups." />
         </p>
         <ErrorBox>{error}</ErrorBox>
         {users === null && <Empty>Loading users…</Empty>}

@@ -92,10 +92,30 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
 
   // Any format (JSON, CSV, YAML, XML, key=value, syslog, text), read by the same parser as the stream.
   const parsedSample = useParsedSample(sample);
+
+  // Cascade: the sources picked in step 1 decide which fields step 2 offers (their schemas and what they really sent,
+  // with the values seen). No source picked means every source the team may read.
+  const watchedIds = form.sourceIds.length ? form.sourceIds : sources.map((s) => s.id);
+  const watchedKey = watchedIds.join(',');
+  const [sourceFields, setSourceFields] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (!watchedKey) { setSourceFields([]); return undefined; }
+    api.get(`/api/fields?sourceIds=${encodeURIComponent(watchedKey)}`)
+      .then((f) => { if (live) setSourceFields(asArray(f).filter((x) => x.scope !== 'alert')); })
+      .catch(() => { if (live) setSourceFields(null); });
+    return () => { live = false; };
+  }, [watchedKey]);
   const fields = useMemo(() => {
     const ev = parsedSample.ok ? parsedSample.value : null;
-    return mergeFields(apiFields, ev ? flattenPaths(ev) : []);
-  }, [apiFields, parsedSample]);
+    const base = sourceFields || asArray(apiFields).filter((x) => x.scope !== 'alert');
+    return mergeFields(base, ev ? flattenPaths(ev).map((f) => ({ ...f, origin: f.origin || 'sample' })) : []);
+  }, [apiFields, sourceFields, parsedSample]);
+  const fieldsNote = !form.sourceIds.length
+    ? 'Fields are listed for every source your team may read. Pick sources in step 1 to see only theirs.'
+    : sourceFields && sourceFields.every((f) => f.origin === 'built-in')
+      ? 'These sources have sent nothing yet and have no schema, so only the built-in fields are known. Paste a sample event on the right to add its fields.'
+      : null;
 
   const teamOptions = useMemo(() => {
     const list = isNew ? memberTeams : teams;
@@ -128,7 +148,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
       runbookId: form.runbookId || null,
     });
     if (priv && isNew) r.private = true;
-    if (filter.mode === 'builder') r.filter = conditionsToAst(filter.conditions, fields);
+    if (filter.mode === 'builder') r.filter = conditionsToAst(filter.conditions, fields, filter.join);
     else r.filterSql = filter.sql || '';
     const rs = resolveSql.trim();
     // Keep the stored condition if it could not be shown as SQL and the user never edited it.
@@ -302,7 +322,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
           </Section>
 
           <Section title="2. Which events raise an alert?" hint="Events matching all of these conditions raise the alert.">
-            <FilterEditor value={filter} onChange={setFilter} fields={fields} emptyText="No conditions yet. Every event from the watched sources raises an alert." />
+            <FilterEditor value={filter} onChange={setFilter} fields={fields} strictFields fieldsNote={fieldsNote} emptyText="No conditions yet. Every event from the watched sources raises an alert." />
           </Section>
 
           <Section title="3. Grouping" hint="Repeated events are folded into one alert with a counter, instead of one alert each.">

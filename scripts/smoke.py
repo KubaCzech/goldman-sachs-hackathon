@@ -206,6 +206,14 @@ check("a binary body is refused with a clear message", raw("trade-gateway", byte
 s, r = call("POST", "/api/formats/parse", ravi, {"text": "level=error service=pricing msg=\"cache miss\""})
 check("the parse endpoint shows how a sample is read", s == 200 and r["format"] == "logfmt" and r["events"][0]["msg"] == "cache miss", str(r))
 
+# ---------------------------------------------------------------- the rule editor's field list follows the chosen sources
+s, fl = call("GET", "/api/fields?sourceIds=trade-gateway", ravi)
+byp = {f["path"]: f for f in fl} if s == 200 else {}
+check("fields for a source come from its schema and recent events", "payload.notional" in byp and byp["payload.notional"]["type"] == "number", str(list(byp))[:200])
+check("text fields offer the values actually seen", "rates" in (byp.get("payload.desk", {}).get("values") or []), str(byp.get("payload.desk")))
+s, fl = call("GET", "/api/fields?sourceIds=trade-gateway", sara)
+check("no fields or values from a source the team may not read", s == 200 and all(f["origin"] == "built-in" for f in fl), str([f["path"] for f in fl if f["origin"] != "built-in"]))
+
 # ---------------------------------------------------------------- private rules (a member's own rule)
 mine_rule = {"teamId": "settlements", "private": True, "name": "sara private " + RUN, "filterSql": f"workflowName = 'priv-{RUN}'",
              "sourceIds": ["settlement-bus"], "groupBy": ["workflowName"], "targets": [{"type": "team", "id": "settlements"}]}
