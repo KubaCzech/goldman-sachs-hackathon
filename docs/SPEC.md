@@ -509,3 +509,10 @@ These supersede the sections above where they differ.
   `GET /api/sources`. `POLLER_SHARDS` / `POLLER_INDEX` split sources between poller instances; `POLL_HOST_MAP`
   (default `localhost=api` in compose) rewrites hosts for the compose network. Seed: `pricing-status` polls
   `/mock/status/pricing-engine` every 10 s, rule `pricing-status-down`.
+- **Assistant (optional):** `GET /api/assistant` → `{enabled, model}`; `POST /api/filters/from-text {text, scope:
+  "rule"|"alerts", sourceIds?}` → `{sql, ast, guiCompatible, unknownFields, model}`. Enabled only when
+  `ANTHROPIC_API_KEY` is set on the API role (503 otherwise). The prompt holds the filter grammar, the field catalog
+  for the given sources (names and types; values only for built-in fields) and the description. The reply is cleaned
+  (code fence, leading WHERE, trailing semicolon), parsed with `SqlParser`, and on a parse error the model gets one
+  correction attempt with the error message; then 422. `CANNOT: reason` replies become 422 with the reason.
+  Provider interface `Assistant.Llm`; default uses the Anthropic Java SDK (`LLM_MODEL`, `LLM_EFFORT`).

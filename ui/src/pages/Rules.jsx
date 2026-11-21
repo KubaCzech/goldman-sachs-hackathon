@@ -97,6 +97,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
   // with the values seen). No source picked means every source the team may read.
   const watchedIds = form.sourceIds.length ? form.sourceIds : sources.map((s) => s.id);
   const watchedKey = watchedIds.join(',');
+  const assist = useMemo(() => ({ scope: 'rule', sourceIds: watchedKey ? watchedKey.split(',') : [] }), [watchedKey]);
   const [sourceFields, setSourceFields] = useState(null);
   useEffect(() => {
     let live = true;
@@ -345,7 +346,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
           </Section>
 
           <Section title="2. Which events raise an alert?" hint="Events matching all of these conditions raise the alert.">
-            <FilterEditor value={filter} onChange={setFilter} fields={fields} strictFields fieldsNote={fieldsNote} emptyText="No conditions yet. Every event from the watched sources raises an alert." />
+            <FilterEditor value={filter} onChange={setFilter} fields={fields} strictFields fieldsNote={fieldsNote} assist={assist} emptyText="No conditions yet. Every event from the watched sources raises an alert." />
           </Section>
 
           <Section title="3. Grouping" hint="Repeated events are folded into one alert with a counter, instead of one alert each.">

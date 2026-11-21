@@ -68,6 +68,10 @@ services:
       <<: *platform-env
       ROLE: api
       JWT_SECRET: demo-only-secret-change-me
+      # Optional: turns on "describe it in words" in the filter editors. Leave unset to keep every model call off.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5-5}
+      LLM_EFFORT: ${LLM_EFFORT:-low}
     depends_on:
       kafka1: {condition: service_healthy}
       postgres: {condition: service_healthy}

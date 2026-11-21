@@ -235,6 +235,17 @@ check("the source shows how the last fetch went", bool(src_view) and src_view[0]
 call("DELETE", "/api/rules/" + pr2["id"], petra)
 call("DELETE", "/api/sources/" + ps["id"], petra)
 
+# ---------------------------------------------------------------- assistant: words -> filter (optional, needs ANTHROPIC_API_KEY)
+s, asst = call("GET", "/api/assistant", ravi)
+check("the assistant reports whether it is set up", s == 200 and isinstance(asst.get("enabled"), bool), str(asst))
+s, nl = call("POST", "/api/filters/from-text", ravi, {"text": "rejected trades on the rates desk with notional above 10 million", "sourceIds": ["trade-gateway"], "scope": "rule"})
+if asst.get("enabled"):
+    check("a description in words becomes a valid filter on the right fields", s == 200 and "payload.notional" in nl["sql"] and "10000000" in nl["sql"] and nl["unknownFields"] == [], str(nl))
+    s2, back = call("POST", "/api/filters/parse", ravi, {"sql": nl["sql"]}) if s == 200 else (0, None)
+    check("the assistant's filter is accepted by the same parser as hand-written SQL", s2 == 200, str(back))
+else:
+    check("without a key the assistant is off and says so", s == 503 and "ANTHROPIC_API_KEY" in nl["error"], str(nl))
+
 # ---------------------------------------------------------------- private rules (a member's own rule)
 mine_rule = {"teamId": "settlements", "private": True, "name": "sara private " + RUN, "filterSql": f"workflowName = 'priv-{RUN}'",
              "sourceIds": ["settlement-bus"], "groupBy": ["workflowName"], "targets": [{"type": "team", "id": "settlements"}]}

@@ -261,7 +261,71 @@ function ValueInput({ c, kind, update, disabled, fields }) {
   return <div className="cond-values">{input('value', 'Value', kind === 'number' ? 'number' : 'value')}</div>;
 }
 
-export default function FilterEditor({ value, onChange, fields: rawFields, emptyText, disabled, strictFields = false, fieldsNote }) {
+// Whether the optional assistant is set up on the server (asked once per page load).
+let assistantInfo = null;
+const loadAssistant = () => {
+  if (!assistantInfo) assistantInfo = api.get('/api/assistant').catch(() => ({ enabled: false }));
+  return assistantInfo;
+};
+
+/**
+ * "Describe it in words": asks the server's assistant for a filter. What comes back has already been checked by the
+ * same parser as hand-written SQL; it is put into the editor for the person to read and change, never applied by itself.
+ * assist = { scope: 'rule' | 'alerts', sourceIds?: [...] } turns it on for an editor.
+ */
+function DescribeInWords({ assist, disabled, onFilter }) {
+  const [enabled, setEnabled] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [note, setNote] = useState(null);
+  useEffect(() => {
+    let live = true;
+    loadAssistant().then((a) => { if (live) setEnabled(!!(a && a.enabled)); });
+    return () => { live = false; };
+  }, []);
+  if (!enabled) return null;
+
+  const ask = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const r = await api.post('/api/filters/from-text', { text, scope: assist.scope, sourceIds: assist.sourceIds || [] });
+      const conds = r && r.ast ? astToConditions(r.ast) : null;
+      onFilter(conds ? { mode: 'builder', join: joinOf(r.ast), conditions: conds, sql: r.sql } : { mode: 'sql', join: 'and', conditions: [], sql: r.sql });
+      const unknown = (r.unknownFields || []).length ? ` It uses fields that are not in the list: ${r.unknownFields.join(', ')}.` : '';
+      setNote(`Written from your description. Read it before you ${assist.scope === 'alerts' ? 'apply' : 'save'} it.${unknown}`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="describe">
+      <div className="row describe-row">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ask(); } }}
+          placeholder="Describe it in words, e.g. critical alerts from payments or trades over 10 million"
+          aria-label="Describe the filter in words"
+          disabled={disabled || busy}
+        />
+        <button type="button" className="btn small" onClick={ask} disabled={disabled || busy || !text.trim()}>{busy ? 'Writing…' : 'Write filter'}</button>
+        <Help text="An AI assistant turns your description into a filter in this editor's own language. It is sent your description and the names and types of the fields, never event data. The result is checked like hand-written SQL and nothing is saved or applied until you do it." />
+      </div>
+      {note && <div className="note-box">{note}</div>}
+      {error && <div className="error-box">{error}</div>}
+    </div>
+  );
+}
+
+export default function FilterEditor({ value, onChange, fields: rawFields, emptyText, disabled, strictFields = false, fieldsNote, assist }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [dialog, setDialog] = useState(false);
@@ -350,6 +414,7 @@ export default function FilterEditor({ value, onChange, fields: rawFields, empty
 
   return (
     <div className="filter-editor">
+      {assist && <DescribeInWords assist={assist} disabled={disabled} onFilter={(f) => { setError(null); onChange(f); }} />}
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={v.mode === 'builder'} className={`tab ${v.mode === 'builder' ? 'active' : ''}`} onClick={toBuilder} disabled={disabled}>
           Builder

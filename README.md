@@ -54,7 +54,7 @@ curl -X POST http://localhost:8080/ingest/pricing-logs -H 'X-Source-Token: demo-
 | **Scalability** | One fixed exactly-once topology, scaled by partitions: add processor instances or threads, no code change. Rules: compacted Kafka topic held by every instance. Dedup and window state: per alert key in a local store backed by a Kafka changelog, so an instance can die and another takes over. Delivery status: Postgres with an idempotency key. Measured: processors 1 → 6 cores gives 2.9×; a broker's second core doubles throughput. Known limits: one very hot alert key is handled by one thread (a rule-design choice); Postgres is a single instance (configuration and read model; not on the event path). | [Benchmark](#benchmark), [How it works](#how-it-works), `scripts/bench_scaling.py` |
 | **UX** | One command to start. A new team gets its first alert about 7 s after creating a source and a rule (measured: 3 API calls, or a few clicks). Rule builder: pick sources, then only their fields (from their schema and their recent events, with the values seen), typed operators, "match all / any", live preview against a sample in any format; SQL mode with live checking for complex rules. Help behind "?" icons, unsaved-changes guard, dark mode. Alerts show a rendered title, chosen fields, a filled-in runbook with runnable steps, and every delivery attempt. | UI at http://localhost:3000; [Start](#start) |
 | **Throughput / latency** | At 1,500 events/s: ingest → alert p50 222 ms / p99 ≈ 370 ms, ingest → email delivered p50 411–665 ms / p99 610–860 ms. Capacity on one laptop: 36,000–56,000 events/s (default), up to 121,000 events/s (one broker on 4 cores). No lost events in any run, checked against Postgres. | [Benchmark](#benchmark), `bench/results/` |
-| **Implementation** | Working end to end; 37 unit/topology tests and 89 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
+| **Implementation** | Working end to end; 41 unit/topology tests and 91 end-to-end checks. | [Tests](#tests), [What is mocked or not built](#what-is-mocked-or-not-built) |
 | **What is new here** | Rules hot-swapped as data in an exactly-once stream; one condition language compiled three ways (stream predicate, visual builder, parameterised SQL over history); format- and schema-agnostic ingest; runbooks that fill themselves from the alert, run actions behind approvals, learn a link when someone confirms a suggestion, and are written back from a handled incident ("Save what was done as a runbook" turns the audit trail and notes into a reviewed draft, with that incident's values turned back into placeholders); a benchmark suite that found and fixed a real event-loss race. | [How it works](#how-it-works) |
 
 ## Seeded demo data
@@ -75,8 +75,8 @@ The four example rules and three runbooks from the brief's appendices are loaded
 ## Tests
 
 ```bash
-cd platform && mvn test          # 37 unit and topology tests (no Docker needed)
-python3 scripts/smoke.py         # 89 end-to-end checks against the running stack
+cd platform && mvn test          # 41 unit and topology tests (no Docker needed)
+python3 scripts/smoke.py         # 91 end-to-end checks against the running stack
 ```
 
 The smoke test covers: ingest and token check, de-duplication into one alert with a counter, one notification for
@@ -194,6 +194,30 @@ sources ─► ingest.<source> topics ─► [normalise + match rules] ─► al
 
 Full detail: [`docs/SPEC.md`](docs/SPEC.md). Phases and test gates: [`docs/PLAN.md`](docs/PLAN.md).
 
+## Describe a filter in words (optional)
+
+With an Anthropic API key, the rule editor and the alert search get a "Describe it in words" box: type
+"critical alerts from payments or trades over 10 million" and it writes the filter into the builder or the SQL tab.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... docker compose up -d        # or put the key in a .env file (ignored by git)
+```
+
+Without a key the box is hidden and no model is ever called. How it is kept safe:
+
+- **The model writes our filter language, not database SQL.** Its answer goes through the same parser as hand-typed
+  text; anything outside the grammar is rejected (it gets one chance to correct itself), and history queries stay
+  parameterised. A wrong answer is a wrong filter the person can see, never an injection.
+- **A person decides.** The filter is placed in the editor with a note to read it; nothing is saved or applied by itself.
+- **No event data leaves.** The model is sent the description and the names and types of the available fields; values
+  seen in events are not sent.
+- **Not in the alert path.** Only the editors call it; the event stream never does.
+- **Replaceable provider.** One small interface (`Assistant.Llm`); the default calls Claude (`LLM_MODEL`, default
+  `claude-opus-5-5`; `LLM_EFFORT`, default `low`). A self-hosted model would implement the same interface.
+
+Not verified against the live API in this repository's test run: the unit tests use a stand-in model, and the
+end-to-end check runs the real call only when a key is present.
+
 ## Runbooks: steps, actions and approvals
 
 A runbook says what to do when an alert fires. Write it in the UI (Runbooks → New runbook) or `POST /api/runbooks`,
@@ -278,7 +302,8 @@ on-call person is notified) stay in the service, under Admin. Not built: the SSO
 - **Action targets** (retry workflow, restart service, escalate, open ticket) call a mock endpoint inside the API.
   The sample runbook's `http://counterparty-service/health` is mapped to that mock.
 - **Runbook search** uses Postgres full-text ranking, not embeddings. `RunbookSearch` is the swap point.
-- **LLM** extraction of steps from prose is an interface (`LlmProvider`) with a no-op default; prose runbooks are
+- **LLM**: the only model call is the optional "describe a filter in words" assistant above. Extraction of steps
+  from prose runbooks is still an interface (`LlmProvider`) with a no-op default; prose runbooks are
   shown as text steps.
 - **Not built:** Kafka SASL/ACLs, archive to object storage, Kubernetes manifests, approval by SMS reply, change
   proposals with diffs for rules and runbooks, per-recipient rate limiting, tailed-log-file source, de-duplication

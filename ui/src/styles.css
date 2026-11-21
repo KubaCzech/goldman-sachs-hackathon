@@ -450,3 +450,6 @@ summary { cursor: pointer; color: var(--primary); font-weight: 500; }
 .prefs-col > .card:last-child { flex: 1; }
 @media (max-width: 980px) { .prefs-grid { grid-template-columns: minmax(0, 1fr); } }
 .rule-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.describe { margin-bottom: 10px; }
+.describe-row { align-items: center; gap: 8px; margin: 0 0 6px; }
+.describe-row input[type="text"] { flex: 1; min-width: 0; }

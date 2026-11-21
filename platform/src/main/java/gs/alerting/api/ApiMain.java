@@ -571,6 +571,14 @@ public final class ApiMain {
             o.put("guiCompatible", Filter.guiCompatible(ast)).put("sql", Filter.print(ast));
             json(ctx, o);
         });
+        // Assistant (optional): a description in words becomes a filter in the same language, checked by the same parser.
+        app.get("/api/assistant", ctx -> json(ctx, Json.obj().put("enabled", Assistant.llm != null).put("model", Assistant.llm == null ? null : Assistant.llm.name())));
+        app.post("/api/filters/from-text", ctx -> {
+            Caller c = caller(ctx);
+            ObjectNode b = body(ctx);
+            List<String> sourceIds = Json.strings(b.get("sourceIds"));
+            json(ctx, Assistant.filterFromText(Json.text(b, "text"), FieldCatalog.catalog(c, sourceIds), Json.text(b, "scope", "rule")));
+        });
         app.post("/api/filters/print", ctx -> {
             JsonNode ast = body(ctx).get("ast");
             Filter.compile(ast);

@@ -11,6 +11,8 @@ import { useUnsavedChanges } from '../unsaved.jsx';
 
 const MAX_ROWS = 300;
 
+const ASSIST_ALERTS = { scope: 'alerts' };
+
 export default function Feed() {
   const { teamName, me } = useAuth();
   // Only teams the user belongs to (/api/teams also lists other teams, by name only).
@@ -213,7 +215,7 @@ export default function Feed() {
 
           <div className="filter-panel">
             <div className="field-label">Conditions<Help text="Only alerts matching every condition are shown. Apply the filter to update the list." /></div>
-            <FilterEditor value={filter} onChange={setFilter} fields={fields} emptyText="No conditions. All alerts are shown." />
+            <FilterEditor value={filter} onChange={setFilter} fields={fields} assist={ASSIST_ALERTS} emptyText="No conditions. All alerts are shown." />
             <div className="row">
               <button type="button" className="btn primary" onClick={() => apply()} disabled={applying}>{applying ? 'Applying…' : 'Apply'}</button>
               <button type="button" className="btn" onClick={clear}>Clear</button>
