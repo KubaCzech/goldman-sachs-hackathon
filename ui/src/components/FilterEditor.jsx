@@ -307,11 +307,12 @@ function DescribeInWords({ assist, disabled, onFilter }) {
   return (
     <div className="describe">
       <div className="row describe-row">
-        <input
-          type="text"
+        <textarea
+          rows={2}
+          ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight + 2, 200)}px`; } }}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ask(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } }}
           placeholder="Describe it in words, e.g. critical alerts from payments or trades over 10 million"
           aria-label="Describe the filter in words"
           disabled={disabled || busy}

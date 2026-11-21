@@ -452,4 +452,9 @@ summary { cursor: pointer; color: var(--primary); font-weight: 500; }
 .rule-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .describe { margin-bottom: 10px; }
 .describe-row { align-items: center; gap: 8px; margin: 0 0 6px; }
-.describe-row input[type="text"] { flex: 1; min-width: 0; }
+.describe-row { align-items: flex-start; }
+.describe-row textarea { flex: 1; min-width: 0; width: auto; min-height: 60px; resize: vertical; line-height: 1.4; }
+.describe-row .btn { margin-top: 2px; white-space: nowrap; }
+.describe-row .help { margin-top: 8px; }
+.feed-filters .describe-row { flex-wrap: wrap; }
+.feed-filters .describe-row textarea { flex-basis: 100%; min-height: 84px; }
