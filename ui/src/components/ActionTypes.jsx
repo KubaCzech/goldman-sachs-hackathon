@@ -72,7 +72,7 @@ export default function ActionTypes() {
           ))}
         </tbody>
       </table>
-      {isPlatformAdmin ? (
+      {isPlatformAdmin && (
         <form onSubmit={save} className="row wrap">
           <Field label="New action name" hint="Lower case with underscores. Runbook steps refer to it as action: <name>.">
             <input type="text" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value.trim() })} placeholder="page_oncall" />
@@ -90,8 +90,6 @@ export default function ActionTypes() {
           </Field>
           <button type="submit" className="btn primary align-end" disabled={busy}>Add action</button>
         </form>
-      ) : (
-        <div className="muted">A platform admin can add new kinds of action here, without any code.</div>
       )}
     </Section>
   );

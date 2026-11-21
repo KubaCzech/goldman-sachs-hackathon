@@ -6,7 +6,7 @@ import { SAMPLES, sampleText } from '../samples.js';
 import { ALL_SEVERITIES, CHANNELS, CHANNEL_LABELS, asArray, flattenPaths, mergeFields, sevColor, show } from '../util.js';
 import { describeParsed, useParsedSample } from '../sampleParse.js';
 import FilterEditor, { conditionsToAst, filterFromStored } from '../components/FilterEditor.jsx';
-import { Empty, ErrorBox, Field, Help, PathList, Section, SeverityBadge, TemplateText, useConfirm } from '../components/ui.jsx';
+import { Empty, ErrorBox, Field, Help, PathList, Section, SeverityBadge, TemplateText, Toggle, useConfirm } from '../components/ui.jsx';
 import { useUnsavedChanges } from '../unsaved.jsx';
 
 const DEFAULT_TITLE = '{{type}} from {{service}}';
@@ -117,11 +117,12 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
       ? 'These sources have sent nothing yet and have no schema, so only the built-in fields are known. Paste a sample event on the right to add its fields.'
       : null;
 
+  // Only team admins can create team rules, so a new team rule offers their admin teams.
   const teamOptions = useMemo(() => {
-    const list = isNew ? memberTeams : teams;
+    const list = isNew ? adminTeams : teams;
     if (form.teamId && !list.some((t) => t.id === form.teamId)) return [...list, { id: form.teamId, name: teamName(form.teamId) }];
     return list;
-  }, [isNew, memberTeams, teams, form.teamId, teamName]);
+  }, [isNew, adminTeams, teams, form.teamId, teamName]);
 
   const buildRule = useCallback(async () => {
     const r = { ...(rule || {}) };
@@ -246,11 +247,33 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
     }
   };
 
+  // The preview panel is not a scroll box of its own. When it is taller than the window, its sticky offset becomes
+  // negative, so it scrolls with the page until its bottom is in view and then stays there.
+  const previewRef = useRef(null);
+  const [stickyTop, setStickyTop] = useState(72);
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el) return undefined;
+    const fit = () => setStickyTop(Math.min(72, window.innerHeight - el.offsetHeight - 16));
+    fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', fit);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, []);
+
   const dirty = resolveTouched || JSON.stringify([form, filter]) !== initial.current;
   const guard = useUnsavedChanges(dirty, save);
   const cancel = () => guard(() => onClose(false));
 
-  const changeTeam = (teamId) => set({ teamId, visibility: isAdminOf(teamId) ? form.visibility : 'private' });
+  const changeTeam = (teamId) => set({ teamId });
+  // A private rule still belongs to a team (it decides which sources the rule may read): it keeps the team
+  // already chosen, by default the user's first team. A team rule needs a team the user is an admin of.
+  const chooseTeamRule = () => set({ visibility: 'team', teamId: isAdminOf(form.teamId) ? form.teamId : (adminTeams[0] && adminTeams[0].id) || form.teamId });
+  const canTeamRule = adminTeams.length > 0;
 
   const targetOptions = newTarget.type === 'user'
     ? users.map((u) => ({ id: u.id, label: u.displayName || u.username || u.id }))
@@ -271,20 +294,12 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
       <div className="split">
         <div className="split-main">
           <Section title="1. Basic Information">
-            <div className="row wrap">
-              <Field label="Rule name" className="grow">
-                <input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Prod settlement failures" />
-              </Field>
-              <Field label="Team" hint="The team decides which sources the rule may read. A team rule belongs to the team; a private rule belongs to you.">
-                <select value={form.teamId} onChange={(e) => changeTeam(e.target.value)} disabled={!isNew}>
-                  {!form.teamId && <option value="">Choose a team…</option>}
-                  {teamOptions.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
-                </select>
-              </Field>
-              <label className="check align-end">
-                <input type="checkbox" checked={form.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> Enabled
-              </label>
+            <div className="row toggle-row">
+              <Toggle checked={form.enabled} onChange={(enabled) => set({ enabled })} label="Enabled" showLabel />
             </div>
+            <Field label="Rule name">
+              <input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Prod settlement failures" />
+            </Field>
             <div className="field">
               <span className="field-label">
                 Visible to
@@ -296,11 +311,19 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
                 <input type="radio" name="visibility" checked={isPrivate} disabled={!isNew} onChange={() => set({ visibility: 'private' })} />
                 Only me (private)
               </label>
-              {(canTeam || !isPrivate) && (
+              {(canTeamRule || !isPrivate) && (
                 <label className="check">
-                  <input type="radio" name="visibility" checked={!isPrivate} disabled={!isNew || !canTeam} onChange={() => set({ visibility: 'team' })} />
-                  Team{form.teamId ? ` (${teamName(form.teamId)})` : ''}
+                  <input type="radio" name="visibility" checked={!isPrivate} disabled={!isNew || !canTeamRule} onChange={chooseTeamRule} />
+                  Team
                 </label>
+              )}
+              {!isPrivate && (
+                <Field label="Team" hint="The team owns the rule and decides which sources it may read." className="sub">
+                  <select value={form.teamId} onChange={(e) => changeTeam(e.target.value)} disabled={!isNew}>
+                    {!form.teamId && <option value="">Choose a team…</option>}
+                    {teamOptions.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
+                  </select>
+                </Field>
               )}
             </div>
             <div className="field">
@@ -456,7 +479,7 @@ function RuleEditor({ rule, onClose, sources, runbooks, apiFields }) {
         </div>
 
         <aside className="split-side">
-          <div className="card sticky">
+          <div className="card sticky" ref={previewRef} style={{ top: stickyTop }}>
             <div className="card-head"><h2>Live preview<Help text="See what this rule does with an example event." /></h2>{previewBusy && <span className="muted">Updating…</span>}</div>
             <div className="row wrap">
               {SAMPLES.map((s) => <button type="button" key={s.id} className="btn small" onClick={() => setSample(sampleText(s.id))}>{s.label}</button>)}
@@ -530,15 +553,22 @@ function ScrollList({ rows = 4, children }) {
   );
 }
 
-function RuleItem({ rule: r, showTeam, onEdit, onDelete }) {
+function RuleItem({ rule: r, showTeam, onEdit, onDelete, onToggle, toggling }) {
   const { me, teamName, userName } = useAuth();
   const isPrivate = !!r.ownerUserId;
+  const enabled = r.enabled !== false;
   return (
     <div className="item">
       <div className="item-head">
-        <div>
-          <strong>{r.name || r.id}</strong>{' '}
-          <span className={`badge ${r.enabled === false ? 'off' : 'on'}`}>{r.enabled === false ? 'Disabled' : 'Enabled'}</span>
+        <div className="rule-name">
+          <Toggle
+            checked={enabled}
+            onChange={onToggle}
+            label={`Rule ${r.name || r.id} enabled`}
+            disabled={!r.canEdit || toggling}
+            title={!r.canEdit ? 'Only an admin of the team can change this.' : enabled ? 'Enabled. Click to disable.' : 'Disabled. Click to enable.'}
+          />{' '}
+          <strong>{r.name || r.id}</strong>
           {isPrivate && <> <span className="badge private">Private{r.ownerUserId !== me.id ? `: ${userName(r.ownerUserId)}` : ''}</span></>}
           {r.severity && <> <SeverityBadge severity={r.severity} /></>}
         </div>
@@ -582,6 +612,7 @@ export default function Rules() {
   const [runbooks, setRunbooks] = useState([]);
   const [fields, setFields] = useState([]);
   const [confirm, confirmDialog] = useConfirm();
+  const [toggling, setToggling] = useState({});
 
   const load = useCallback(() => {
     api.get('/api/rules').then((r) => { setRules(asArray(r)); setError(null); }).catch((e) => { setRules([]); setError(e.message); });
@@ -616,6 +647,20 @@ export default function Rules() {
     }
   };
 
+  // Only "enabled" is sent: the server keeps the rest of the rule as it is.
+  const setEnabled = async (r, enabled) => {
+    setToggling((t) => ({ ...t, [r.id]: true }));
+    try {
+      await api.put(`/api/rules/${encodeURIComponent(r.id)}`, { enabled });
+      setRules((list) => (list || []).map((x) => (x.id === r.id ? { ...x, enabled } : x)));
+      toast.success(`Rule "${r.name || r.id}" ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setToggling((t) => ({ ...t, [r.id]: false }));
+    }
+  };
+
   if (editing !== undefined) {
     return (
       <RuleEditor
@@ -636,7 +681,7 @@ export default function Rules() {
   });
   const canCreate = asArray(me.teams).length > 0 || adminTeams.length > 0;
   const renderItem = (r, showTeam) => (
-    <RuleItem key={r.id} rule={r} showTeam={showTeam} onEdit={() => setEditing(r)} onDelete={() => remove(r)} />
+    <RuleItem key={r.id} rule={r} showTeam={showTeam} onEdit={() => setEditing(r)} onDelete={() => remove(r)} onToggle={(on) => setEnabled(r, on)} toggling={!!toggling[r.id]} />
   );
 
   return (

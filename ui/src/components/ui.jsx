@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { dismiss, subscribe, toast } from '../toast.js';
 import { copyText, mergeFields, pretty, sevColor } from '../util.js';
 
@@ -89,13 +89,90 @@ export function JsonBlock({ value }) {
 
 // Small "?" icon; the help text shows as a tooltip on hover or keyboard focus.
 // A span (not a button) so it never becomes the labelled control when used inside a <label>.
+// The tooltip is position: fixed and placed from the icon's position, so a scrolling or clipping
+// ancestor (tables, panels) never cuts it off, and it is kept inside the viewport.
 export function Help({ text, label = 'Help' }) {
   const id = useId();
+  const iconRef = useRef(null);
+  const tipRef = useRef(null);
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [pos, setPos] = useState(null);
+  const open = hover || focus;
+
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return undefined; }
+    const place = () => {
+      const icon = iconRef.current;
+      const tip = tipRef.current;
+      if (!icon || !tip) return;
+      const a = icon.getBoundingClientRect();
+      const w = tip.offsetWidth;
+      const h = tip.offsetHeight;
+      const vw = document.documentElement.clientWidth;
+      const vh = window.innerHeight;
+      const center = a.left + a.width / 2;
+      const left = Math.max(8, Math.min(center - w / 2, vw - 8 - w));
+      let top = a.bottom + 7;
+      let above = false;
+      if (top + h > vh - 8 && a.top - 7 - h >= 8) { top = a.top - 7 - h; above = true; }
+      setPos({ left, top, arrow: Math.max(8, Math.min(w - 8, center - left)), above });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
   if (!text) return null;
+  const style = pos
+    ? { left: pos.left, top: pos.top, '--arrow-left': `${pos.arrow}px` }
+    : { left: 0, top: 0, visibility: 'hidden' };
   return (
-    <span className="help" onClick={(e) => e.preventDefault()}>
-      <span className="help-icon" tabIndex={0} role="img" aria-label={label} aria-describedby={id}>?</span>
-      <span className="help-tip" role="tooltip" id={id}>{text}</span>
+    <span className="help" onClick={(e) => e.preventDefault()} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <span
+        className="help-icon"
+        ref={iconRef}
+        tabIndex={0}
+        role="img"
+        aria-label={label}
+        aria-describedby={id}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+      >
+        ?
+      </span>
+      <span className={`help-tip ${open ? 'open' : ''} ${pos && pos.above ? 'above' : ''}`} role="tooltip" id={id} ref={tipRef} style={open ? style : undefined}>
+        {text}
+      </span>
+    </span>
+  );
+}
+
+// On/off switch. A button with role="switch", so Space and Enter toggle it and screen readers announce the state.
+// label: accessible name; showLabel: also show it as text to the right. title: tooltip (also shown when disabled).
+export function Toggle({ checked, onChange, label, showLabel = false, disabled = false, title }) {
+  const button = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!checked}
+      aria-label={label}
+      className={`switch ${checked ? 'on' : ''}`}
+      disabled={disabled}
+      title={title}
+      onClick={() => onChange && onChange(!checked)}
+    >
+      <span className="switch-knob" aria-hidden="true" />
+    </button>
+  );
+  return (
+    <span className={`switch-wrap ${disabled ? 'disabled' : ''}`} title={title}>
+      {button}
+      {showLabel && <span className="switch-label" aria-hidden="true" onClick={() => !disabled && onChange && onChange(!checked)}>{label}</span>}
     </span>
   );
 }

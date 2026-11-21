@@ -242,48 +242,52 @@ function CreateSource({ schemas, onDone, onCancel }) {
   };
 
   return (
-    <form onSubmit={submit} className="row wrap">
-      <Field label="Name"><input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Pricing logs" /></Field>
-      <Field label="Owning team">
-        <select value={teamId} onChange={(e) => set({ teamId: e.target.value })}>
-          {adminTeams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
-        </select>
-      </Field>
-      <Field label="How events arrive">
-        <select value={form.type} onChange={(e) => set({ type: e.target.value })}>
-          <option value="webhook">Webhook (they send us HTTP POSTs)</option>
-          <option value="kafka">Kafka topic (they write to a topic)</option>
-          <option value="poll">HTTP polling (we fetch a URL on a schedule)</option>
-        </select>
-      </Field>
-      {form.type === 'poll' && (
-        <>
-          <Field label="URL to fetch" className="grow" hint="For example a status page or a health or metrics endpoint. Its host must be on the allowlist a platform admin keeps. The response can be in any format.">
-            <input type="text" value={form.poll.url} onChange={(e) => set({ poll: { ...form.poll, url: e.target.value } })} placeholder="http://localhost:8080/mock/status/my-service" />
-          </Field>
-          <Field label="Every (seconds)">
-            <input type="number" min={5} value={form.poll.intervalSeconds} onChange={(e) => set({ poll: { ...form.poll, intervalSeconds: e.target.value } })} style={{ width: 90 }} />
-          </Field>
-          <label className="check align-end">
-            <input type="checkbox" checked={form.poll.onlyWhenChanged} onChange={(e) => set({ poll: { ...form.poll, onlyWhenChanged: e.target.checked } })} />
-            Only when the response changes
-            <Help text="Off: every fetch becomes an event (useful when each response is a new reading). On: an unchanged status page sends nothing." />
-          </label>
-        </>
-      )}
-      <Field label="Message format" hint="Leave on automatic unless every message has the same format. Detection handles JSON, JSON lines, CSV/TSV with a header row, YAML, XML, key=value pairs, syslog, form fields and plain text (one event per line).">
-        <select value={form.format} onChange={(e) => set({ format: e.target.value })}>
-          {FORMATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-        </select>
-      </Field>
-      <Field label="Default schema">
-        <select value={form.defaultSchemaId} onChange={(e) => set({ defaultSchemaId: e.target.value })}>
-          <option value="">None (auto-detect)</option>
-          {schemas.map((s) => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
-        </select>
-      </Field>
-      <button type="submit" className="btn primary align-end" disabled={busy}>Create source</button>
-      <button type="button" className="btn align-end" onClick={() => guard(onCancel)}>Cancel</button>
+    <form onSubmit={submit}>
+      <div className="row wrap">
+        <Field label="Name"><input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Pricing logs" /></Field>
+        <Field label="Owning team">
+          <select value={teamId} onChange={(e) => set({ teamId: e.target.value })}>
+            {adminTeams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
+          </select>
+        </Field>
+        <Field label="How events arrive">
+          <select value={form.type} onChange={(e) => set({ type: e.target.value })}>
+            <option value="webhook">Webhook (they send us HTTP POSTs)</option>
+            <option value="kafka">Kafka topic (they write to a topic)</option>
+            <option value="poll">HTTP polling (we fetch a URL on a schedule)</option>
+          </select>
+        </Field>
+        {form.type === 'poll' && (
+          <>
+            <Field label="URL to fetch" className="grow" hint="For example a status page or a health or metrics endpoint. Its host must be on the allowlist a platform admin keeps. The response can be in any format.">
+              <input type="text" value={form.poll.url} onChange={(e) => set({ poll: { ...form.poll, url: e.target.value } })} placeholder="http://localhost:8080/mock/status/my-service" />
+            </Field>
+            <Field label="Every (seconds)">
+              <input type="number" min={5} value={form.poll.intervalSeconds} onChange={(e) => set({ poll: { ...form.poll, intervalSeconds: e.target.value } })} style={{ width: 90 }} />
+            </Field>
+            <label className="check align-end">
+              <input type="checkbox" checked={form.poll.onlyWhenChanged} onChange={(e) => set({ poll: { ...form.poll, onlyWhenChanged: e.target.checked } })} />
+              Only when the response changes
+              <Help text="Off: every fetch becomes an event (useful when each response is a new reading). On: an unchanged status page sends nothing." />
+            </label>
+          </>
+        )}
+        <Field label="Message format" hint="Leave on automatic unless every message has the same format. Detection handles JSON, JSON lines, CSV/TSV with a header row, YAML, XML, key=value pairs, syslog, form fields and plain text (one event per line).">
+          <select value={form.format} onChange={(e) => set({ format: e.target.value })}>
+            {FORMATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        </Field>
+        <Field label="Default schema">
+          <select value={form.defaultSchemaId} onChange={(e) => set({ defaultSchemaId: e.target.value })}>
+            <option value="">None (auto-detect)</option>
+            {schemas.map((s) => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div className="row form-actions">
+        <button type="submit" className="btn primary" disabled={busy}>Create source</button>
+        <button type="button" className="btn" onClick={() => guard(onCancel)}>Cancel</button>
+      </div>
     </form>
   );
 }
@@ -385,7 +389,7 @@ function SchemaFromSample({ onDone, onCancel }) {
       <ErrorBox>{error}</ErrorBox>
       <div className="row">
         <button type="button" className="btn primary" onClick={infer} disabled={busy || !text.trim()}>{busy && !inferred ? 'Reading…' : 'Detect fields'}</button>
-        <button type="button" className="btn" onClick={() => guard(onCancel)}>Cancel</button>
+        {!inferred && <button type="button" className="btn" onClick={() => guard(onCancel)}>Cancel</button>}
       </div>
 
       {inferred && (
@@ -443,7 +447,10 @@ function SchemaFromSample({ onDone, onCancel }) {
                 {adminTeams.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
               </select>
             </Field>
-            <button type="button" className="btn primary align-end" onClick={save} disabled={busy}>Save schema</button>
+          </div>
+          <div className="row form-actions">
+            <button type="button" className="btn primary" onClick={save} disabled={busy}>Save schema</button>
+            <button type="button" className="btn" onClick={() => guard(onCancel)}>Cancel</button>
           </div>
         </div>
       )}
@@ -451,16 +458,23 @@ function SchemaFromSample({ onDone, onCancel }) {
   );
 }
 
-function mappingSummary(mapping) {
-  if (!mapping || typeof mapping !== 'object') return 'Detected automatically';
-  const parts = ROLES.map(([role, label]) => {
-    const m = mapping[role];
-    if (!m) return null;
-    if (m.path) return `${label}: ${m.path}`;
-    if (m.const != null) return `${label}: always "${m.const}"`;
-    return null;
-  }).filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'Detected automatically';
+// One mapped field per line, e.g. "severity ← labels.severity".
+function MappingLines({ mapping }) {
+  const lines = mapping && typeof mapping === 'object'
+    ? ROLES.map(([role]) => {
+      const m = mapping[role];
+      if (!m) return null;
+      if (m.path) return [role, <code>{m.path}</code>];
+      if (m.const != null) return [role, <>always "{m.const}"</>];
+      return null;
+    }).filter(Boolean)
+    : [];
+  if (!lines.length) return <span className="muted">Detected automatically</span>;
+  return (
+    <div className="mapping-lines">
+      {lines.map(([role, value]) => <div key={role} className="nowrap">{role} ← {value}</div>)}
+    </div>
+  );
 }
 
 const SUBTABS = [['schemas', 'Schemas'], ['sources', 'Sources']];
@@ -555,15 +569,15 @@ export default function Sources() {
             ) : (
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Name</th><th>Team</th><th>Field mapping</th><th>Fields</th><th>Recognised by</th><th /></tr></thead>
+                  <thead><tr><th>Name</th><th>Team</th><th>Field mapping</th><th>Fields</th><th className="nowrap">Recognised by</th><th /></tr></thead>
                   <tbody>
                     {schemas.map((s) => (
                       <tr key={s.id}>
                         <td><strong>{s.name || s.id}</strong><div className="muted"><code>{s.id}</code></div></td>
                         <td>{teamName(s.teamId) || '—'}</td>
-                        <td>{mappingSummary(s.mapping)}</td>
+                        <td><MappingLines mapping={s.mapping} /></td>
                         <td>{asArray(s.fields).length}</td>
-                        <td>{s.match ? `Condition (priority ${s.priority != null ? s.priority : 0})` : 'Source default only'}</td>
+                        <td className="nowrap">{s.match ? `Condition (priority ${s.priority != null ? s.priority : 0})` : 'Source default only'}</td>
                         <td className="right">
                           {isAdminOf(s.teamId) && <button type="button" className="btn small danger" onClick={() => deleteSchema(s)}>Delete</button>}
                         </td>
