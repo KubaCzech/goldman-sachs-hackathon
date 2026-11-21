@@ -495,3 +495,8 @@ These supersede the sections above where they differ.
   in SQL mode, which is checked as it is typed.
 - **Identity:** demo login only; production SSO would replace `Auth.load` with token verification plus a
   group → team/role mapping (README, "Identity and teams").
+- **Incident → runbook draft:** `GET /api/alerts/{id}/runbook-draft` returns `{name, teamId, content (YAML),
+  stepsFromRunbook, stepsFromNotes, basedOn}` built from the alert's audit trail: runbook steps that were run (or
+  approved, or marked done) are copied from their templates; rejected steps are kept with a comment; ack/resolve notes
+  become text steps with distinctive event values replaced by `{{path}}` placeholders (longest value first). `matches`
+  is the alert's type and service. The UI opens it in the runbook editor as an unsaved draft (team admins only).

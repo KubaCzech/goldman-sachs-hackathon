@@ -107,6 +107,8 @@ public final class RunbookRoutes {
         });
 
         app.get("/api/alerts/{id}/runbook", ctx -> ApiMain.json(ctx, view(AlertRoutes.alertFor(ctx))));
+        // Draft runbook from what was done for this alert (audit trail + notes); the team reviews it before saving.
+        app.get("/api/alerts/{id}/runbook-draft", ctx -> ApiMain.json(ctx, IncidentDraft.build(AlertRoutes.alertFor(ctx))));
         app.post("/api/alerts/{id}/runbook/link", ctx -> {
             Caller c = ApiMain.caller(ctx);
             ObjectNode alert = AlertRoutes.alertFor(ctx);

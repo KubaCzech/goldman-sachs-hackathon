@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
@@ -53,13 +54,15 @@ function StepsPreview({ parsed }) {
   );
 }
 
-function RunbookEditor({ runbook, onClose }) {
+// draft: a new runbook pre-filled from what was done for an alert (GET /api/alerts/{id}/runbook-draft); unsaved until saved.
+function RunbookEditor({ runbook, draft, onClose }) {
   const { adminTeams, teamName } = useAuth();
   const isNew = !runbook;
-  const [name, setName] = useState((runbook && runbook.name) || '');
-  const [teamIdRaw, setTeamId] = useState((runbook && runbook.teamId) || '');
+  const start = runbook || draft || {};
+  const [name, setName] = useState(start.name || '');
+  const [teamIdRaw, setTeamId] = useState(start.teamId || '');
   const [format, setFormat] = useState('');
-  const [content, setContent] = useState((runbook && runbook.content) || '');
+  const [content, setContent] = useState(start.content || '');
   const [parsed, setParsed] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -105,14 +108,22 @@ function RunbookEditor({ runbook, onClose }) {
     }
   };
 
-  const initial = useRef(JSON.stringify([name, teamIdRaw, format, content]));
+  // A draft counts as unsaved from the start, so leaving asks first.
+  const initial = useRef(JSON.stringify(runbook ? [name, teamIdRaw, format, content] : ['', '', '', '']));
   const dirty = JSON.stringify([name, teamIdRaw, format, content]) !== initial.current;
   const guard = useUnsavedChanges(dirty, save);
 
   const teamOptions = adminTeams.some((t) => t.id === teamId) || !teamId ? adminTeams : [...adminTeams, { id: teamId, name: teamName(teamId) }];
 
   return (
-    <Section title={isNew ? 'New runbook' : `Edit runbook: ${runbook.name || runbook.id}`} hint="Paste the instructions in any form: YAML, Markdown, a wiki page, or plain text. Nothing is lost; the original text is always kept.">
+    <Section title={isNew ? (draft ? 'New runbook from an incident' : 'New runbook') : `Edit runbook: ${runbook.name || runbook.id}`} hint="Paste the instructions in any form: YAML, Markdown, a wiki page, or plain text. Nothing is lost; the original text is always kept.">
+      {draft && (
+        <div className="note-box">
+          Written from what was done for this alert: {draft.stepsFromRunbook || 0} step(s) that were run from the runbook and{' '}
+          {draft.stepsFromNotes || 0} from notes. Values from that alert were turned into placeholders such as {'{{service}}'} so
+          the runbook fits the next incident. Check it, edit what is specific to this one incident, then save.
+        </div>
+      )}
       <div className="row wrap">
         <Field label="Name (optional)" hint="Taken from the text when left empty.">
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. settlement-timeout" />
@@ -155,7 +166,12 @@ export default function Runbooks() {
   const { teamName, isAdminOf, adminTeams } = useAuth();
   const [runbooks, setRunbooks] = useState(null);
   const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(undefined); // undefined = list, null = new, object = edit
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [draft] = useState(() => (location.state && location.state.runbookDraft) || null);
+  const [editing, setEditing] = useState(draft ? null : undefined); // undefined = list, null = new, object = edit
+  // Forget the draft in the browser history so a reload does not open it again.
+  useEffect(() => { if (location.state && location.state.runbookDraft) navigate('.', { replace: true, state: null }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(() => {
@@ -193,7 +209,7 @@ export default function Runbooks() {
       <ErrorBox>{error}</ErrorBox>
 
       {editing !== undefined && (
-        <RunbookEditor key={editing ? editing.id : 'new'} runbook={editing} onClose={(changed) => { setEditing(undefined); if (changed) load(); }} />
+        <RunbookEditor key={editing ? editing.id : 'new'} runbook={editing} draft={editing ? null : draft} onClose={(changed) => { setEditing(undefined); if (changed) load(); }} />
       )}
 
       {editing === undefined && (

@@ -273,6 +273,11 @@ actions = [a["action"] for a in call("GET", f"/api/alerts/{aid}/audit", sam)[1]]
 check("audit trail records who did what", {"ALERT_OPENED", "STEP_RUN", "STEP_APPROVAL_REQUESTED", "STEP_APPROVED_AND_RUN"} <= set(actions), str(actions))
 call("POST", f"/api/alerts/{aid}/resolve", sam, {"note": "smoke test"})
 check("manual resolve with a note", bool(wait_for(lambda: [a for a in alerts(sam, f"workflowId = '{wf_id}'") if a["status"] == "RESOLVED" and a["note"] == "smoke test"])))
+s, draft = call("GET", f"/api/alerts/{aid}/runbook-draft", sam)
+check("a handled incident becomes a runbook draft", s == 200 and draft["stepsFromRunbook"] == 3 and draft["stepsFromNotes"] == 1, str(draft)[:300])
+s, parsed = call("POST", "/api/runbooks/parse", sam, {"content": draft["content"]}) if s == 200 else (0, None)
+check("the draft is a valid runbook that keeps placeholders, not this incident's values",
+      s == 200 and parsed["format"] == "yaml" and len(parsed["steps"]) == 4 and "{{workflowId}}" in draft["content"] and wf_id not in draft["content"], str(parsed)[:300])
 
 s, parsed = call("POST", "/api/runbooks/parse", sam, {"content": "<<odd format>> step one; step two"})
 check("a runbook in an unknown format is still accepted as text", s == 200 and parsed["format"] == "text" and len(parsed["steps"]) == 1)

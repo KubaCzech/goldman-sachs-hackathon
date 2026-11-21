@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { toast } from '../toast.js';
@@ -158,7 +158,19 @@ function RunbookPanel({ alert, data, error, reload }) {
 
 export default function AlertDetail() {
   const { id } = useParams();
-  const { teamName, userName } = useAuth();
+  const { teamName, userName, isAdminOf } = useAuth();
+  const navigate = useNavigate();
+  const [drafting, setDrafting] = useState(false);
+  const draftRunbook = async () => {
+    setDrafting(true);
+    try {
+      const draft = await api.get(`/api/alerts/${encodeURIComponent(id)}/runbook-draft`);
+      navigate('/runbooks', { state: { runbookDraft: draft } });
+    } catch (e) {
+      toast.error(e);
+      setDrafting(false);
+    }
+  };
   const [alert, setAlert] = useState(null);
   const [error, setError] = useState(null);
   const [runbook, setRunbook] = useState(null);
@@ -274,7 +286,14 @@ export default function AlertDetail() {
             <button type="button" className="btn primary align-end" disabled={busy} onClick={() => act('resolve')}>Resolve</button>
           </div>
         ) : (
-          <div className="hint">This alert is resolved. A new matching event opens a new alert.</div>
+          <div className="row wrap status-actions">
+            <div className="hint grow">This alert is resolved. A new matching event opens a new alert.</div>
+            {isAdminOf(alert.teamId) && (
+              <button type="button" className="btn" disabled={drafting} onClick={draftRunbook}>
+                {drafting ? 'Writing draft…' : 'Save what was done as a runbook'}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
