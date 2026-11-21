@@ -93,7 +93,8 @@ settlement sample, whose seeded rule groups every failure of the workflow into o
 then go to one alert, which one thread must handle in order. Spread shows what the system can do; the original mix
 shows what one very hot alert costs.
 
-Everything below was measured on one laptop (11 CPUs and 8 GB given to Docker) running the whole system: 3 brokers
+Everything below was measured on one laptop, a MacBook Pro with an Apple M3 Pro (11 cores: 5 performance, 6 efficiency; 18 GB),
+with all 11 cores and 8 GB given to Docker, running the whole system: 3 brokers
 (replication factor 3), Postgres, API, dispatcher, the load generator and the processors. Events are the three sample
 schemas; every event matches a rule. Every run is checked twice: the benchmark's own tally and, independently, the sum
 of alert counters in Postgres must both equal the events sent. **No run lost an event.** Raw results: `bench/results/`.
@@ -126,6 +127,7 @@ processed **36,000–56,000 events/s** across four runs; the spread comes from s
 | Speed-up | 1.0× | 1.8× | 2.3× | 2.7× | 2.9× |
 
 Processing is CPU-bound and scales with cores until the 5 shared cores (3 brokers, load generator, Postgres) are full.
+Docker's cores map onto a mix of performance and efficiency cores that macOS chooses, so per-core figures are approximate.
 With separate broker machines the processor tier has more room.
 
 **Broker scaling** (one broker, replication factor 1, on dedicated cores; processors fixed):

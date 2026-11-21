@@ -23,7 +23,8 @@ function errorMessage(res, data) {
     else if (res.status >= 500) msg = `The server is unavailable or failed (${res.status}).`;
     else msg = `Request failed (${res.status}).`;
   }
-  if (data && typeof data === 'object' && data.position != null) msg += ` (at position ${data.position})`;
+  // The server's message already names the position for SQL errors; add it only when it is missing.
+  if (data && typeof data === 'object' && data.position != null && !/at position/.test(msg)) msg += ` (at position ${data.position})`;
   return msg;
 }
 
