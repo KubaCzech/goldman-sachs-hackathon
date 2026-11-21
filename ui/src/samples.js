@@ -37,7 +37,7 @@ export const SAMPLES = [
   {
     id: 'csv-trades',
     label: 'Trades (CSV)',
-    text: 'tradeId,payload.desk,payload.notional,payload.currency,reason\nT-1001,rates,25000000,EUR,LIMIT_BREACH\nT-1002,fx,1200000,USD,PRICE_STALE',
+    text: 'meta.schema,payload.tradeId,payload.desk,payload.notional,payload.currency,payload.reason\ntrade.rejected.v2,T-1001,rates,25000000,EUR,LIMIT_BREACH\ntrade.rejected.v2,T-1002,fx,1200000,USD,PRICE_STALE',
   },
   {
     id: 'logfmt-pricing',

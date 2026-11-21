@@ -17,7 +17,8 @@ function yamlFor(a) {
   const params = placeholdersIn(a.urlTemplate || '', a.bodyTemplate || '');
   const lines = [`- check: Describe what this step does`, `  action: ${a.type}`];
   params.forEach((p) => lines.push(`  ${p}: "{{${p}}}"`));
-  lines.push('  approval: required');
+  // Matches the parser's defaults: a read-only http_get needs no approval, anything that changes something does.
+  lines.push(`  approval: ${a.type === 'http_get' ? 'none' : 'required'}`);
   return lines.join('\n');
 }
 
